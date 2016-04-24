@@ -1,7 +1,10 @@
 import subprocess
 from subprocess import PIPE
-
+from time import sleep
+import logging
 import re
+
+from actwa.client import ActivityWatchClient
 
 
 def xprop_id(window_id) -> str:
@@ -67,18 +70,31 @@ def get_window(wid, active_window=False):
 def get_windows(wids, active_window_id=None):
     return [get_window(wid, active_window=(wid == active_window_id)) for wid in wids]
 
+def main():
+    logging.basicConfig(level=logging.DEBUG)
+    client = ActivityWatchClient("x11watcher")
 
-if __name__ == "__main__":
-    wids = get_window_ids()
-    active_window_id = get_active_window_id()
-    windows = get_windows(wids, active_window_id)
+    GET_ONLY_ACTIVE = True
 
+    last_windows = []
+    while True:
+        wids = get_window_ids()
+        active_window_id = get_active_window_id()
+        if active_window_id == "0x0":
+            print("Failed to find active window, id found was 0x0")
+            sleep(1)
+            continue
 
-    import sys
-    if len(sys.argv) > 1 and sys.argv[1] == "dump":
-        import json
-        print(json.dumps(windows))
-    else:
-        for window in windows:
-            print(window)
+        if GET_ONLY_ACTIVE:
+            current_windows = get_windows([active_window_id], active_window_id)
+        else:
+            current_windows = get_windows(wids, active_window_id)
+
+        if last_windows != current_windows:
+            last_windows = current_windows
+            print("Windows changed")
+            client.send_event(last_windows)
+            print(current_windows)
+
+        sleep(1)
 
