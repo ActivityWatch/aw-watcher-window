@@ -1,0 +1,14 @@
+[Unit]
+Description=X11 window watcher for ActivityWatch
+Documentation=
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/aw-watcher-x11
+Environment="DISPLAY=:0"
+Restart=always
+KillSignal=SIGINT
+After=aw-server.service
+
+[Install]
+WantedBy=default.target
