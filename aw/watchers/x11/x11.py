@@ -4,7 +4,9 @@ from time import sleep
 import logging
 import re
 
-from actwa.client import ActivityWatchClient
+from aw.client import ActivityWatchClient
+
+logger = logging.getLogger("aw-watcher-x11")
 
 
 def xprop_id(window_id) -> str:
@@ -44,7 +46,15 @@ def get_xprop_field(fieldname, xprop_output):
 
 
 def get_xprop_field_str(fieldname, xprop_output) -> str:
-    return get_xprop_field(fieldname, xprop_output)[0][1:-1]
+    return get_xprop_field(fieldname, xprop_output)[0].strip('"')
+
+
+def get_xprop_field_strlist(fieldname, xprop_output) -> str:
+    return [s.strip('"') for s in get_xprop_field(fieldname, xprop_output)]
+
+
+def get_xprop_field_class(xprop_output) -> str:
+    return [c.strip('", ') for c in get_xprop_field("WM_CLASS", xprop_output)[0].split(',')]
 
 
 def get_xprop_field_int(fieldname, xprop_output) -> int:
@@ -57,10 +67,10 @@ def get_window(wid, active_window=False):
         "id": wid,
         "active": active_window,
         "name": get_xprop_field_str("WM_NAME", s),
-        "class": get_xprop_field("WM_CLASS", s),
+        "class": get_xprop_field_class(s),
         "desktop": get_xprop_field_int("WM_DESKTOP", s),
         "command": get_xprop_field("WM_COMMAND", s),
-        "role": get_xprop_field("WM_WINDOW_ROLE", s),
+        "role": get_xprop_field_strlist("WM_WINDOW_ROLE", s),
         "pid": get_xprop_field_int("WM_PID", s),
     }
 
@@ -78,23 +88,25 @@ def main():
 
     last_windows = []
     while True:
-        wids = get_window_ids()
-        active_window_id = get_active_window_id()
-        if active_window_id == "0x0":
-            print("Failed to find active window, id found was 0x0")
-            sleep(1)
-            continue
+        try:
+            wids = get_window_ids()
+            active_window_id = get_active_window_id()
+            if active_window_id == "0x0":
+                print("Failed to find active window, id found was 0x0")
+                sleep(1)
+                continue
 
-        if GET_ONLY_ACTIVE:
-            current_windows = get_windows([active_window_id], active_window_id)
-        else:
-            current_windows = get_windows(wids, active_window_id)
+            if GET_ONLY_ACTIVE:
+                current_windows = get_windows([active_window_id], active_window_id)
+            else:
+                current_windows = get_windows(wids, active_window_id)
 
-        if last_windows != current_windows:
-            last_windows = current_windows
-            print("Windows changed")
-            client.send_event(last_windows)
-            print(current_windows)
-
+            if last_windows != current_windows:
+                last_windows = current_windows
+                print("Windows changed")
+                client.send_event(last_windows)
+                print(current_windows)
+        except Exception as e:
+            logger.error("Exception thrown while trying to get active window: " + e)
         sleep(1)
 
