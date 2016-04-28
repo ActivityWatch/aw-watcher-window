@@ -107,6 +107,6 @@ def main():
                 client.send_event(last_windows)
                 print(current_windows)
         except Exception as e:
-            logger.error("Exception thrown while trying to get active window: " + e)
+            logger.error("Exception thrown while trying to get active window: {}".format(e))
         sleep(1)
 
