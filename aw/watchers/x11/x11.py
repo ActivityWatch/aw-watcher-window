@@ -3,11 +3,21 @@ from subprocess import PIPE
 from time import sleep
 import logging
 import re
+import sys
 
+from aw.core.models import Event
 from aw.client import ActivityWatchClient
 
 logger = logging.getLogger("aw-watcher-x11")
 
+# req_version is 3.5 due to usage of subprocess.run
+# It would be nice to be able to use 3.4 as well since it's still common as of May 2016
+req_version = (3,5)
+cur_version = sys.version_info
+
+if not cur_version >= req_version:
+    logger.error("Your Python version is too old, 3.5 or higher is required.")
+    exit(1)
 
 def xprop_id(window_id) -> str:
     cmd = ["xprop"]
@@ -81,8 +91,15 @@ def get_windows(wids, active_window_id=None):
     return [get_window(wid, active_window=(wid == active_window_id)) for wid in wids]
 
 def main():
-    logging.basicConfig(level=logging.DEBUG)
-    client = ActivityWatchClient("x11watcher")
+    import argparse
+
+    parser = argparse.ArgumentParser("A watcher for windows in X11")
+    parser.add_argument("--testing", dest="testing", action="store_const", const=True, default=False)
+
+    args = parser.parse_args()
+
+    logging.basicConfig(level=logging.DEBUG if args.testing else logging.INFO)
+    client = ActivityWatchClient("x11watcher", testing=args.testing)
 
     GET_ONLY_ACTIVE = True
 
@@ -104,7 +121,7 @@ def main():
             if last_windows != current_windows:
                 last_windows = current_windows
                 print("Windows changed")
-                client.send_event(last_windows)
+                client.send_event(Event(windows=last_windows))
                 print(current_windows)
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
