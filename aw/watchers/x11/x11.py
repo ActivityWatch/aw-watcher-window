@@ -94,7 +94,7 @@ def main():
     import argparse
 
     parser = argparse.ArgumentParser("A watcher for windows in X11")
-    parser.add_argument("--testing", dest="testing", action="store_const", const=True, default=False)
+    parser.add_argument("--testing", action="store_true")
 
     args = parser.parse_args()
 
