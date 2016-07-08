@@ -4,6 +4,7 @@ from time import sleep
 import logging
 import re
 import sys
+from datetime import datetime
 
 from aw_core.models import Event
 from aw_client import ActivityWatchClient
@@ -121,7 +122,7 @@ def main():
             if last_windows != current_windows:
                 last_windows = current_windows
                 print("Windows changed")
-                client.send_event(Event(windows=last_windows))
+                client.send_event(Event(windows=last_windows, timestamp=datetime.now()))
                 print(current_windows)
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
