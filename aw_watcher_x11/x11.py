@@ -5,8 +5,8 @@ import logging
 import re
 import sys
 
-from aw.core.models import Event
-from aw.client import ActivityWatchClient
+from aw_core.models import Event
+from aw_client import ActivityWatchClient
 
 logger = logging.getLogger("aw-watcher-x11")
 
