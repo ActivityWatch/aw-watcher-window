@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 
-
 var frontmostApplication = NSWorkspace.sharedWorkspace().frontmostApplication!;
 print("frontmostApplication: ",terminator:"")
 if frontmostApplication.localizedName != nil {
@@ -12,8 +11,10 @@ if frontmostApplication.bundleIdentifier != nil {
 }
 print()
 
+
 var allApplications = NSWorkspace.sharedWorkspace().runningApplications;
 for app in allApplications {
+	if(app.activationPolicy != NSApplicationActivationPolicy.Regular) {continue}
 	if app.localizedName != nil {
 		print(app.localizedName!,terminator:"")
 	}
