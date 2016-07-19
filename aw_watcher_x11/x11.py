@@ -5,6 +5,7 @@ import logging
 import re
 import sys
 from datetime import datetime
+import traceback
 
 from aw_core.models import Event
 from aw_client import ActivityWatchClient
@@ -94,6 +95,8 @@ def get_windows(wids, active_window_id=None):
 def main():
     import argparse
 
+    poll_time = 1.0
+
     parser = argparse.ArgumentParser("A watcher for windows in X11")
     parser.add_argument("--testing", action="store_true")
 
@@ -104,27 +107,39 @@ def main():
 
     GET_ONLY_ACTIVE = True
 
-    last_windows = []
+    last_window = []
     while True:
         try:
             wids = get_window_ids()
             active_window_id = get_active_window_id()
             if active_window_id == "0x0":
                 print("Failed to find active window, id found was 0x0")
-                sleep(1)
+                sleep(poll_time)
                 continue
 
-            if GET_ONLY_ACTIVE:
-                current_windows = get_windows([active_window_id], active_window_id)
-            else:
-                current_windows = get_windows(wids, active_window_id)
+            # Always true, getting all windows currently not supported
+            #if GET_ONLY_ACTIVE:
+            current_window = get_windows([active_window_id], active_window_id)[0]
+            #else:
+            #    current_windows = get_windows(wids, active_window_id)
 
+            """
             if last_windows != current_windows:
                 last_windows = current_windows
                 print("Windows changed")
                 client.send_event(Event(windows=last_windows, timestamp=datetime.now()))
                 print(current_windows)
+            """
+
+            if last_window != current_window:
+                last_window = current_window
+                print("Window changed")
+                labels = [current_window["name"]]
+                labels.extend(current_window["class"])
+                client.send_event(Event(label=labels, timestamp=datetime.now()))
+                print(current_window)
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
-        sleep(1)
+            traceback.print_exc(e)
+        sleep(poll_time)
 
