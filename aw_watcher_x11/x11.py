@@ -134,8 +134,8 @@ def main():
             if last_window != current_window:
                 last_window = current_window
                 print("Window changed")
-                labels = [current_window["name"]]
-                labels.extend(current_window["class"])
+                labels = ["title:" + current_window["name"]]
+                labels.extend(["class:" + cls for cls in current_window["class"]])
                 client.send_event(Event(label=labels, timestamp=datetime.now()))
                 print(current_window)
         except Exception as e:
