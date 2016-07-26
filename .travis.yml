@@ -1,0 +1,14 @@
+os: osx
+osx_image: xcode7.3
+language: python
+python:
+# - "3.3"
+# - "3.4"
+ - "3.5"
+ - "nightly" # currently points to 3.6-dev
+
+# TODO: Compile swift file here
+
+script:
+ - true
+
