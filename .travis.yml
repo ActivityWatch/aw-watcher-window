@@ -6,8 +6,8 @@ before_install:
  - python3 --version
 
 install:
- - true
-# TODO: Compile swift file here
+ # Compiles swift code
+ - xcrun -sdk macosx swiftc getRunningApplications.swift
 
 script:
  - true
