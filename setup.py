@@ -17,5 +17,4 @@ setup(name='aw-watcher-x11',
       ],
       entry_points={
           'console_scripts': ['aw-watcher-x11 = aw_watcher_x11:main']
-      }
-)
+      })
