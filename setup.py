@@ -9,7 +9,12 @@ setup(name='aw-watcher-x11',
       author_email='erik@bjareho.lt',
       url='https://github.com/ActivityWatch/aw-watcher-x11',
       packages=['aw_watcher_x11'],
-      install_requires=['aw-client'],
+      install_requires=[
+          'aw-client'
+      ],
+      dependency_links=[
+          'https://github.com/ActivityWatch/aw-client/tarball/master#egg=aw-client'
+      ],
       entry_points={
           'console_scripts': ['aw-watcher-x11 = aw_watcher_x11:main']
       }
