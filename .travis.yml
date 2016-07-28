@@ -4,7 +4,8 @@ python:
 # - "3.3"
 # - "3.4"
  - "3.5"
- - "nightly" # currently points to 3.6-dev
+# Doesn't work with pyinstaller
+# - "nightly" # currently points to 3.6-dev
 
 before_install:
  - "pip install pyinstaller"
