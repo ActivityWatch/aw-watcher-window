@@ -3,7 +3,7 @@ matrix:
   include:
    - python: "3.5"
    - python: "nightly"
-  allowed_failures:
+  allow_failures:
    # Doesn't currently work with pyinstaller
    - python: "nightly"
 
