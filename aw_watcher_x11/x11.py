@@ -7,6 +7,8 @@ import sys
 from datetime import datetime
 import traceback
 
+import pytz
+
 from aw_core.models import Event
 from aw_client import ActivityWatchClient
 
@@ -136,7 +138,7 @@ def main():
                 print("Window changed")
                 labels = ["title:" + current_window["name"]]
                 labels.extend(["class:" + cls for cls in current_window["class"]])
-                client.send_event(Event(label=labels, timestamp=datetime.now()))
+                client.send_event(Event(label=labels, timestamp=datetime.now(pytz.utc)))
                 print(current_window)
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
