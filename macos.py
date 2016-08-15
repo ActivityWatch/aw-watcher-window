@@ -5,6 +5,7 @@ import logging
 import re
 import sys
 from datetime import datetime
+import pytz
 
 from aw_core.models import Event
 from aw_client import ActivityWatchClient
@@ -48,7 +49,7 @@ def main():
             if(last_active_app != active_app):
                 last_active_app = active_app
                 print("Active application changed")
-                client.send_event(Event(application=active_app, timestamp=datetime.now()))
+                client.send_event(Event(label=active_app, timestamp=datetime.now(pytz.utc)))
                 print(active_app)
         except Exception as e:
             logger.error("Exception thrown while trying to get active applications {}".format(e))
