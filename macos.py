@@ -21,15 +21,17 @@ if not cur_version >= req_version:
     logger.error("Your Python version is too old, 3.5 or higher is required.")
     exit(1)
 
-#Starts swiftbinary that asks osx what apps are running.
-def getApps() -> str:
-    cmd = ["./getRunningApplications"]
+def getInfo() -> str:
+    cmd = ["osascript", "printAppTitle.scpt"]
     p = subprocess.run(cmd, stdout=PIPE)
-    return str(p.stdout, "utf8")
+    return str(p.stdout, "utf8").strip()
 
-#just extracts the right content from the firstline produced by getApps()
-def getActive(apps) -> str:
-    return " ".join(apps.splitlines()[0].split(" ")[1:])
+def getApp(info) -> str:
+    return info.split('","')[0][1:]
+
+def getTitle(info) -> str:
+    return info.split('","')[1][:-1]
+
 
 def main():
     import argparse
@@ -42,15 +44,19 @@ def main():
     logging.basicConfig(level=logging.DEBUG if args.testing else logging.INFO)
     client = ActivityWatchClient("macoswatcher", testing=args.testing)
 
-    last_active_app = "";
+    last_app = "";
+    last_title = "";
     while True:
         try:
-            active_app = getActive(getApps())
-            if(last_active_app != active_app):
-                last_active_app = active_app
-                print("Active application changed")
-                client.send_event(Event(label=active_app, timestamp=datetime.now(pytz.utc)))
-                print(active_app)
+            info = getInfo()
+
+            active_app = getApp(info)
+            active_title = getTitle(info)
+            if(last_app != active_app or last_title != active_title):
+                last_app = active_app
+                last_title = active_title
+                client.send_event(Event(label=[active_app,active_title], timestamp=datetime.now(pytz.utc)))
+                print(active_app + ", " + active_title)
         except Exception as e:
             logger.error("Exception thrown while trying to get active applications {}".format(e))
         sleep(1)
