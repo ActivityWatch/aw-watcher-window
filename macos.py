@@ -49,9 +49,9 @@ def main():
     while True:
         try:
             info = getInfo()
-
             active_app = getApp(info)
             active_title = getTitle(info)
+            
             if(last_app != active_app or last_title != active_title):
                 last_app = active_app
                 last_title = active_title
@@ -59,7 +59,7 @@ def main():
                 print(active_app + ", " + active_title)
         except Exception as e:
             logger.error("Exception thrown while trying to get active applications {}".format(e))
-        sleep(1)
+        sleep(0.5)
 
 if __name__ == "__main__":
     main()
