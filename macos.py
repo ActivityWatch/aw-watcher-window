@@ -50,7 +50,7 @@ def main():
     active_app = getApp(info)
     active_title = getTitle(info)
     if(active_title == ""):
-        logger.error("Does the terminal have access to accessibility API? See README for how to give access!")
+        logger.error("Title of active window not found. Does the terminal have access to accessibility API? See README for how to give access!")
 
     while True:
         try:
