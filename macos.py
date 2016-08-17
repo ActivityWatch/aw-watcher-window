@@ -46,12 +46,18 @@ def main():
 
     last_app = "";
     last_title = "";
+    info = getInfo()
+    active_app = getApp(info)
+    active_title = getTitle(info)
+    if(active_title == ""):
+        logger.error("Does the terminal have access to accessibility API? See README for how to give access!")
+
     while True:
         try:
             info = getInfo()
             active_app = getApp(info)
             active_title = getTitle(info)
-            
+
             if(last_app != active_app or last_title != active_title):
                 last_app = active_app
                 last_title = active_title
