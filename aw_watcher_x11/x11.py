@@ -29,7 +29,7 @@ def main():
     eventtype = "currentwindow"
     client.create_bucket(bucketname, eventtype)
 
-    
+
 
     # get_only_active = True
 
@@ -62,9 +62,8 @@ def main():
                 print("Window changed")
                 labels = ["title:" + current_window["name"]]
                 labels.extend(["class:" + cls for cls in set(current_window["class"])])
-                client.send_event(bucketname, Event(label=labels,
-                                        timestamp=datetime.now(pytz.utc),
-                                        duration=()))
+                client.send_event(bucketname,
+                                  Event(label=labels, timestamp=datetime.now(pytz.utc)))
                 print(current_window)
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
