@@ -25,6 +25,10 @@ def main():
     logging.basicConfig(level=logging.DEBUG if args.testing else logging.INFO)
     client = ActivityWatchClient("x11watcher", testing=args.testing)
 
+    bucketname = "{}_{}".format(client.client_name, client.client_hostname)
+    eventtype = "currentwindow"
+    client.create_bucket(bucketname, eventtype)
+
     # get_only_active = True
 
     last_window = []
@@ -56,8 +60,8 @@ def main():
                 print("Window changed")
                 labels = ["title:" + current_window["name"]]
                 labels.extend(["class:" + cls for cls in set(current_window["class"])])
-                client.send_event(Event(label=labels,
-                                        timestamp=datetime.now(pytz.utc)))
+                client.send_event(bucketname,
+                                  Event(label=labels, timestamp=datetime.now(pytz.utc)))
                 print(current_window)
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
