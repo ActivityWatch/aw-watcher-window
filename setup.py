@@ -10,7 +10,7 @@ setup(name='aw-watcher-x11',
       url='https://github.com/ActivityWatch/aw-watcher-x11',
       packages=['aw_watcher_x11'],
       install_requires=[
-          'aw-client>=0.2',
+          'aw-client',
           'pytz'
       ],
       dependency_links=[
