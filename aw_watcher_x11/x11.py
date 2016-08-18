@@ -25,7 +25,7 @@ def main():
     logging.basicConfig(level=logging.DEBUG if args.testing else logging.INFO)
     client = ActivityWatchClient("x11watcher", testing=args.testing)
 
-    bucketname = "{}-{}".format(client.client_name, client.client_hostname)
+    bucketname = "{}@{}".format(client.client_name, client.client_hostname)
     eventtype = "currentwindow"
     
     buckets = client.get_buckets()
