@@ -29,8 +29,6 @@ def main():
     eventtype = "currentwindow"
     client.create_bucket(bucketname, eventtype)
 
-
-
     # get_only_active = True
 
     last_window = []
