@@ -25,6 +25,15 @@ def main():
     logging.basicConfig(level=logging.DEBUG if args.testing else logging.INFO)
     client = ActivityWatchClient("x11watcher", testing=args.testing)
 
+    bucketname = "{}-{}".format(client.client_name, client.client_hostname)
+    eventtype = "currentwindow"
+    
+    buckets = client.get_buckets()
+    if bucketname not in buckets:
+        client.create_bucket(bucketname, eventtype)
+
+    
+
     # get_only_active = True
 
     last_window = []
@@ -56,7 +65,7 @@ def main():
                 print("Window changed")
                 labels = ["title:" + current_window["name"]]
                 labels.extend(["class:" + cls for cls in set(current_window["class"])])
-                client.send_event(Event(label=labels,
+                client.send_event(bucketname, Event(label=labels,
                                         timestamp=datetime.now(pytz.utc),
                                         duration=()))
                 print(current_window)
