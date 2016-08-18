@@ -57,8 +57,7 @@ def main():
                 labels = ["title:" + current_window["name"]]
                 labels.extend(["class:" + cls for cls in set(current_window["class"])])
                 client.send_event(Event(label=labels,
-                                        timestamp=datetime.now(pytz.utc),
-                                        duration=()))
+                                        timestamp=datetime.now(pytz.utc)))
                 print(current_window)
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
