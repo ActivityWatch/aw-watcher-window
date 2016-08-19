@@ -1,15 +1,46 @@
-from time import sleep
 import logging
-from datetime import datetime
 import traceback
-from . import xprop
+import sys
+from time import sleep
+from datetime import datetime
 
 import pytz
 
 from aw_core.models import Event
 from aw_client import ActivityWatchClient
 
-logger = logging.getLogger("aw_watcher_x11")
+from . import xprop
+from . import __desc__
+
+logger = logging.getLogger("aw.watcher.window")
+
+
+def get_current_window_linux():
+    active_window_id = xprop.get_active_window_id()
+    if active_window_id == "0x0":
+        print("Failed to find active window, id found was 0x0")
+        return None
+    return xprop.get_windows([active_window_id], active_window_id)[0]
+
+
+def get_current_window_macos():
+    raise NotImplementedError
+
+
+def get_current_window_windows():
+    raise NotImplementedError
+
+
+def get_current_window():
+    # TODO: Implement with_title kwarg as option
+    if sys.platform.startwith("linux"):
+        return get_current_window_linux()
+    elif sys.platform == "darwin":
+        return get_current_window_macos()
+    elif sys.platform == "win32":
+        return get_current_window_windows()
+    else:
+        raise Exception("Unknown platform: {}".format(sys.platform))
 
 
 def main():
@@ -17,43 +48,22 @@ def main():
 
     poll_time = 1.0
 
-    parser = argparse.ArgumentParser("A watcher for windows in X11")
+    parser = argparse.ArgumentParser("A cross platform window watcher for Linux, macOS and Windows.")
     parser.add_argument("--testing", action="store_true")
 
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.DEBUG if args.testing else logging.INFO)
-    client = ActivityWatchClient("x11watcher", testing=args.testing)
+    client = ActivityWatchClient("windowwatcher", testing=args.testing)
 
     bucketname = "{}_{}".format(client.client_name, client.client_hostname)
     eventtype = "currentwindow"
     client.create_bucket(bucketname, eventtype)
 
-    # get_only_active = True
-
     last_window = []
     while True:
         try:
-            # wids = xprop.get_window_ids()
-            active_window_id = xprop.get_active_window_id()
-            if active_window_id == "0x0":
-                print("Failed to find active window, id found was 0x0")
-                sleep(poll_time)
-                continue
-
-            # Always true, getting all windows currently not supported
-            # if get_only_active:
-            current_window = xprop.get_windows([active_window_id], active_window_id)[0]
-            # else:
-            #    current_windows = get_windows(wids, active_window_id)
-
-            """
-            if last_windows != current_windows:
-                last_windows = current_windows
-                print("Windows changed")
-                client.send_event(Event(windows=last_windows, timestamp=datetime.now()))
-                print(current_windows)
-            """
+            current_window = get_current_window()
 
             if last_window != current_window:
                 last_window = current_window
