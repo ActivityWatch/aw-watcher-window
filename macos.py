@@ -44,6 +44,10 @@ def main():
     logging.basicConfig(level=logging.DEBUG if args.testing else logging.INFO)
     client = ActivityWatchClient("macoswatcher", testing=args.testing)
 
+    bucketname = "{}_{}".format(client.client_name, client.client_hostname)
+    eventtype = "currentwindow"
+    client.create_bucket(bucketname, eventtype)
+    
     last_app = "";
     last_title = "";
     info = getInfo()
@@ -61,7 +65,7 @@ def main():
             if(last_app != active_app or last_title != active_title):
                 last_app = active_app
                 last_title = active_title
-                client.send_event(Event(label=[active_app,active_title], timestamp=datetime.now(pytz.utc)))
+                client.send_event(bucketname, Event(label=[active_app,active_title], timestamp=datetime.now(pytz.utc)))
                 print(active_app + ", " + active_title)
         except Exception as e:
             logger.error("Exception thrown while trying to get active applications {}".format(e))
