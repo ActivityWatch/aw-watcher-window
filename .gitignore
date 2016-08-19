@@ -1,2 +1,2 @@
-*.out
-getRunningApplications
+__pycache__
+*.egg-info

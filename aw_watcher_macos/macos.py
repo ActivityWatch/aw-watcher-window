@@ -6,6 +6,7 @@ import re
 import sys
 from datetime import datetime
 import pytz
+import os
 
 from aw_core.models import Event
 from aw_client import ActivityWatchClient
@@ -22,7 +23,7 @@ if not cur_version >= req_version:
     exit(1)
 
 def getInfo() -> str:
-    cmd = ["osascript", "printAppTitle.scpt"]
+    cmd = ["osascript", os.path.join(os.path.dirname(os.path.realpath(__file__)), "printAppTitle.scpt")]
     p = subprocess.run(cmd, stdout=PIPE)
     return str(p.stdout, "utf8").strip()
 
@@ -51,6 +52,7 @@ def main():
     last_app = "";
     last_title = "";
     info = getInfo()
+    print(info)
     active_app = getApp(info)
     active_title = getTitle(info)
     if(active_title == ""):
@@ -71,5 +73,3 @@ def main():
             logger.error("Exception thrown while trying to get active applications {}".format(e))
         sleep(0.5)
 
-if __name__ == "__main__":
-    main()
