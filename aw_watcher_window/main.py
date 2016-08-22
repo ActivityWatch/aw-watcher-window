@@ -2,7 +2,7 @@ import logging
 import traceback
 import sys
 from time import sleep
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pytz
 
@@ -73,25 +73,36 @@ def main():
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.DEBUG if args.testing else logging.INFO)
-    client = ActivityWatchClient("windowwatcher", testing=args.testing)
+    client = ActivityWatchClient("aw-watcher-window", testing=args.testing)
 
     bucketname = "{}_{}".format(client.client_name, client.client_hostname)
     eventtype = "currentwindow"
     client.create_bucket(bucketname, eventtype)
 
-    last_window = []
+    last_window = None
+    last_window_start = datetime.now(timezone.utc)
     while True:
         try:
             current_window = get_current_window()
 
             if last_window != current_window:
+                finished_window = last_window
+                now = datetime.now(timezone.utc)
+
+                # Send away finished window
+                if last_window is not None:
+                    labels = ["title:" + finished_window["title"]]
+                    labels.append("appname:" + finished_window["appname"])
+                    duration = now - last_window_start
+                    logger.debug("Window is no longer active: " + str(finished_window))
+                    logger.debug("Duration: " + str(duration.total_seconds()) + "s")
+                    event = Event(label=labels, timestamp=now, duration=duration)
+                    client.send_event(bucketname, event)
+
+                # Store current window
                 last_window = current_window
-                print("Window changed")
-                labels = ["title:" + current_window["title"]]
-                labels.append("appname:" + current_window["appname"])
-                client.send_event(bucketname,
-                                  Event(label=labels, timestamp=datetime.now(pytz.utc)))
-                print(current_window)
+                last_window_start = now
+                logger.info("Window became active: " + str(last_window))
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
             traceback.print_exc(e)
