@@ -9,7 +9,7 @@ import pytz
 from aw_core.models import Event
 from aw_client import ActivityWatchClient
 
-if sys.platform.startswith("python"):
+if sys.platform.startswith("linux"):
     from . import xprop
 elif sys.platform == "darwin":
     from . import macos
@@ -41,7 +41,7 @@ def get_current_window_windows() -> dict:
 
 def get_current_window() -> dict:
     # TODO: Implement with_title kwarg as option
-    if sys.platform.startwith("linux"):
+    if sys.platform.startswith("linux"):
         return get_current_window_linux()
     elif sys.platform == "darwin":
         return get_current_window_macos()
@@ -59,7 +59,7 @@ def main():
     # req_version is 3.5 due to usage of subprocess.run
     # It would be nice to be able to use 3.4 as well since it's still common as of May 2016
     req_version = (3, 5)
-    cur_version = sys.version
+    cur_version = sys.version_info
     if not cur_version >= req_version:
         logger.error("Your Python version is too old, 3.5 or higher is required")
         exit(1)
