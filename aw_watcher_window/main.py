@@ -25,7 +25,9 @@ def get_current_window_linux() -> dict:
     if active_window_id == "0x0":
         print("Failed to find active window, id found was 0x0")
         return None
-    return xprop.get_windows([active_window_id], active_window_id)[0]
+    w = xprop.get_windows([active_window_id], active_window_id)[0]
+    window = {"appname": w["class"][1], "title": w["name"]}
+    return window
 
 
 def get_current_window_macos() -> dict:
@@ -85,8 +87,8 @@ def main():
             if last_window != current_window:
                 last_window = current_window
                 print("Window changed")
-                labels = ["title:" + current_window["name"]]
-                labels.extend(["class:" + cls for cls in set(current_window["class"])])
+                labels = ["title:" + current_window["title"]]
+                labels.append("appname:" + current_window["appname"])
                 client.send_event(bucketname,
                                   Event(label=labels, timestamp=datetime.now(pytz.utc)))
                 print(current_window)
