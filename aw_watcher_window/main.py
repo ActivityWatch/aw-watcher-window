@@ -34,7 +34,7 @@ def get_current_window_macos() -> dict:
     info = macos.getInfo()
     app = macos.getApp(info)
     title = macos.getTitle(info)
-    return {"title": title, "app": app}
+    return {"title": title, "appname": app}
 
 
 def get_current_window_windows() -> dict:
