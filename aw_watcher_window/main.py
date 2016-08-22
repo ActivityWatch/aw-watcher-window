@@ -85,7 +85,9 @@ def main():
         try:
             current_window = get_current_window()
 
-            if last_window != current_window:
+            if current_window is None:
+                logger.warning('Unable to fetch window, trying again on next check')
+            elif last_window != current_window:
                 finished_window = last_window
                 now = datetime.now(timezone.utc)
 
