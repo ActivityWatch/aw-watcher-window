@@ -2,7 +2,7 @@ import logging
 import traceback
 import sys
 from time import sleep
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import pytz
 
@@ -57,6 +57,7 @@ def main():
     import argparse
 
     poll_time = 1.0
+    update_time = 15.0
 
     # req_version is 3.5 due to usage of subprocess.run
     # It would be nice to be able to use 3.4 as well since it's still common as of May 2016
@@ -81,30 +82,38 @@ def main():
 
     last_window = None
     last_window_start = datetime.now(timezone.utc)
+    last_event_time = datetime.now(timezone.utc)
     while True:
         try:
             current_window = get_current_window()
 
             if current_window is None:
-                logger.warning('Unable to fetch window, trying again on next check')
-            elif last_window != current_window:
-                finished_window = last_window
+                logger.warning('Unable to fetch window, trying again on next poll')
+            else:
+                # Create event
                 now = datetime.now(timezone.utc)
-
-                # Send away finished window
-                if last_window is not None:
-                    labels = ["title:" + finished_window["title"]]
-                    labels.append("appname:" + finished_window["appname"])
-                    duration = now - last_window_start
-                    logger.debug("Window is no longer active: " + str(finished_window))
-                    logger.debug("Duration: " + str(duration.total_seconds()) + "s")
-                    event = Event(label=labels, timestamp=now, duration=duration)
+                duration = now - last_window_start
+                labels = ["title:" + current_window["title"]]
+                labels.append("appname:" + current_window["appname"])
+                event = Event(label=labels, timestamp=now, duration=duration)
+                
+                # If windows are not the same, insert it as a new event
+                if last_window != current_window:
                     client.send_event(bucketname, event)
+                    last_event_time = datetime.now(timezone.utc)
+                    # Store current window
+                    last_window = current_window
+                    last_window_start = now
+                    logger.info("Window became active: " + str(last_window))
+                    # Log
+                    logger.debug("Window is no longer active: " + str(current_window))
+                    logger.debug("Duration: " + str(duration.total_seconds()) + "s")
 
-                # Store current window
-                last_window = current_window
-                last_window_start = now
-                logger.info("Window became active: " + str(last_window))
+                # If windows are the same and update_time has passed (default 15sec), replace last event with this event for updated duration
+                elif now - timedelta(seconds=update_time) > last_event_time:
+                    last_event_time = datetime.now(timezone.utc)
+                    client.replace_last_event(bucketname, event)
+
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
             traceback.print_exc(e)
