@@ -83,8 +83,9 @@ def main():
     while True:
         try:
             current_window = get_current_window()
-
-            if last_window != current_window:
+            if current_window == None:
+                logging.warning('Unable to fetch window, trying again on next check')
+            elif last_window != current_window:
                 last_window = current_window
                 print("Window changed")
                 labels = ["title:" + current_window["title"]]
