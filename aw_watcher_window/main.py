@@ -87,32 +87,49 @@ def main():
         try:
             current_window = get_current_window()
 
+            now = datetime.now(timezone.utc)
             if current_window is None:
                 logger.warning('Unable to fetch window, trying again on next poll')
-            else:
-                # Create event
-                now = datetime.now(timezone.utc)
+            
+            # If windows are not the same, insert it as a new event
+            elif last_window != current_window:
+                if last_window is not None:
+                    # Create last_window event
+                    duration = now - last_window_start
+                    labels = ["title:" + last_window["title"]]
+                    labels.append("appname:" + last_window["appname"])
+                    last_window_event = Event(label=labels, timestamp=now, duration=duration)
+                    # Send last_window event
+                    client.replace_last_event(bucketname, last_window_event)
+                
+                # Create current_window event
+                duration = timedelta()
+                labels = ["title:" + current_window["title"]]
+                labels.append("appname:" + current_window["appname"])
+                current_window_event = Event(label=labels, timestamp=now, duration=duration)
+                # Send events
+                client.send_event(bucketname, current_window_event)
+                last_event_time = now
+                
+                # Store current window
+                last_window = current_window
+                last_window_start = now
+                logger.info("Window became active: " + str(last_window))
+                # Log
+                logger.debug("Window is no longer active: " + str(current_window))
+                logger.debug("Duration: " + str(duration.total_seconds()) + "s")
+
+            # If windows are the same and update_time has passed (default 15sec), replace last event with this event for updated duration
+            elif now - timedelta(seconds=update_time) > last_event_time:
+                # Create current_window event
                 duration = now - last_window_start
                 labels = ["title:" + current_window["title"]]
                 labels.append("appname:" + current_window["appname"])
-                event = Event(label=labels, timestamp=now, duration=duration)
-                
-                # If windows are not the same, insert it as a new event
-                if last_window != current_window:
-                    client.send_event(bucketname, event)
-                    last_event_time = datetime.now(timezone.utc)
-                    # Store current window
-                    last_window = current_window
-                    last_window_start = now
-                    logger.info("Window became active: " + str(last_window))
-                    # Log
-                    logger.debug("Window is no longer active: " + str(current_window))
-                    logger.debug("Duration: " + str(duration.total_seconds()) + "s")
+                current_window_event = Event(label=labels, timestamp=now, duration=duration)
 
-                # If windows are the same and update_time has passed (default 15sec), replace last event with this event for updated duration
-                elif now - timedelta(seconds=update_time) > last_event_time:
-                    last_event_time = datetime.now(timezone.utc)
-                    client.replace_last_event(bucketname, event)
+                # Send current_window event
+                client.replace_last_event(bucketname, current_window_event)
+                last_event_time = now
 
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
