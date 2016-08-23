@@ -99,6 +99,9 @@ def main():
                     last_window_event = Event(label=labels, timestamp=now, duration=duration)
                     # Send last_window event
                     client.replace_last_event(bucketname, last_window_event)
+                    # Log
+                    logger.debug("Window is no longer active: " + str(last_window))
+                    logger.debug("Duration: {}s".format(str(duration.total_seconds())))
                 
                 # Create current_window event
                 duration = timedelta()
@@ -109,13 +112,11 @@ def main():
                 client.send_event(bucketname, current_window_event)
                 last_event_time = now
                 
+                # Log
+                logger.info("Window became active: " + str(current_window))
                 # Store current window
                 last_window = current_window
                 last_window_start = now
-                logger.info("Window became active: " + str(last_window))
-                # Log
-                logger.debug("Window is no longer active: " + str(current_window))
-                logger.debug("Duration: " + str(duration.total_seconds()) + "s")
 
             # If windows are the same and update_time has passed (default 15sec), replace last event with this event for updated duration
             elif now - timedelta(seconds=update_time) > last_event_time:
