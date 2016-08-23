@@ -20,6 +20,7 @@ before_install:
  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
      brew update;
      brew install python3;
+     pip3 install --upgrade pip setuptools wheel virtualenv;
      virtualenv venv -p python3;
      source venv/bin/activate;
    fi
@@ -28,9 +29,6 @@ before_install:
 
 
 install:
- - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
-        xcrun -sdk macosx swiftc getRunningApplications.swift;
-   fi
  - python setup.py install
 
 
