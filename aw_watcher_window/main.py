@@ -4,8 +4,6 @@ import sys
 from time import sleep
 from datetime import datetime, timezone, timedelta
 
-import pytz
-
 from aw_core.models import Event
 from aw_client import ActivityWatchClient
 
