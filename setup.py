@@ -11,7 +11,6 @@ setup(name='aw-watcher-window',
       packages=['aw_watcher_window'],
       install_requires=[
           'aw-client',
-          'pytz'
       ],
       dependency_links=[
           'https://github.com/ActivityWatch/aw-client/tarball/master#egg=aw-client'
