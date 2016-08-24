@@ -54,19 +54,40 @@ def get_xprop_field(fieldname, xprop_output):
 
 
 def get_xprop_field_str(fieldname, xprop_output) -> str:
-    return get_xprop_field(fieldname, xprop_output)[0].strip('"')
+    field = None
+    try:
+        field = get_xprop_field(fieldname, xprop_output)[0].strip('"')
+    except IndexError:
+        pass
+    if not field:
+        field = "unknown"
+    return field
 
 
 def get_xprop_field_strlist(fieldname, xprop_output) -> str:
     return [s.strip('"') for s in get_xprop_field(fieldname, xprop_output)]
 
 
-def get_xprop_field_class(xprop_output) -> str:
-    return [c.strip('", ') for c in get_xprop_field("WM_CLASS", xprop_output)[0].split(',')]
-
-
 def get_xprop_field_int(fieldname, xprop_output) -> int:
-    return int(get_xprop_field(fieldname, xprop_output)[0])
+    field = None
+    try:
+        field = int(get_xprop_field(fieldname, xprop_output)[0])
+    except IndexError:
+        pass
+    if not field:
+        field = -1
+    return field
+
+
+def get_xprop_field_class(xprop_output) -> str:
+    classname = None
+    try:
+        classname = [c.strip('", ') for c in get_xprop_field("WM_CLASS", xprop_output)[0].split(',')]
+    except IndexError:
+        pass
+    if not classname:
+        classname = "unknown"
+    return classname
 
 
 def get_window(wid, active_window=False):
