@@ -87,7 +87,7 @@ def main():
 
             now = datetime.now(timezone.utc)
             if current_window is None:
-                logger.warning('Unable to fetch window, trying again on next poll')
+                logger.debug('Unable to fetch window, trying again on next poll')
             
             # If windows are not the same, insert it as a new event
             elif last_window != current_window:
