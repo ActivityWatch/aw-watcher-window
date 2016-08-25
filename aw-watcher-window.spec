@@ -4,7 +4,7 @@ block_cipher = None
 
 
 a = Analysis(['__main__.py'],
-             pathex=[],
+             pathex=['/home/erb/Programming/activitywatch/aw-watcher-window'],
              binaries=None,
              datas=None,
              hiddenimports=[],
@@ -18,11 +18,16 @@ pyz = PYZ(a.pure, a.zipped_data,
              cipher=block_cipher)
 exe = EXE(pyz,
           a.scripts,
-          a.binaries,
-          a.zipfiles,
-          a.datas,
+          exclude_binaries=True,
           name='aw-watcher-window',
           debug=False,
           strip=False,
           upx=True,
           console=True )
+coll = COLLECT(exe,
+               a.binaries,
+               a.zipfiles,
+               a.datas,
+               strip=False,
+               upx=True,
+               name='aw-watcher-window')
