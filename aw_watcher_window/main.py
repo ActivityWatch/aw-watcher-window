@@ -96,7 +96,7 @@ def main():
                     duration = now - last_window_start
                     labels = ["title:" + last_window["title"]]
                     labels.append("appname:" + last_window["appname"])
-                    last_window_event = Event(label=labels, timestamp=now, duration=duration)
+                    last_window_event = Event(label=labels, timestamp=last_window_start, duration=duration)
                     # Send last_window event
                     client.replace_last_event(bucketname, last_window_event)
                     # Log
@@ -124,7 +124,7 @@ def main():
                 duration = now - last_window_start
                 labels = ["title:" + current_window["title"]]
                 labels.append("appname:" + current_window["appname"])
-                current_window_event = Event(label=labels, timestamp=now, duration=duration)
+                current_window_event = Event(label=labels, timestamp=last_window_start, duration=duration)
 
                 # Send current_window event
                 client.replace_last_event(bucketname, current_window_event)
