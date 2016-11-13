@@ -88,7 +88,7 @@ def main():
             now = datetime.now(timezone.utc)
             if current_window is None:
                 logger.debug('Unable to fetch window, trying again on next poll')
-            
+
             # If windows are not the same, insert it as a new event
             elif last_window != current_window:
                 if last_window is not None:
@@ -102,7 +102,7 @@ def main():
                     # Log
                     logger.debug("Window is no longer active: " + str(last_window))
                     logger.debug("Duration: {}s".format(str(duration.total_seconds())))
-                
+
                 # Create current_window event
                 duration = timedelta()
                 labels = ["title:" + current_window["title"]]
@@ -111,7 +111,7 @@ def main():
                 # Send events
                 client.send_event(bucketname, current_window_event)
                 last_event_time = now
-                
+
                 # Log
                 logger.info("Window became active: " + str(current_window))
                 # Store current window
