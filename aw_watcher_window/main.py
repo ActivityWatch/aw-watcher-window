@@ -5,6 +5,7 @@ from time import sleep
 from datetime import datetime, timezone, timedelta
 
 from aw_core.models import Event
+from aw_core.log import setup_logging
 from aw_client import ActivityWatchClient
 
 if sys.platform.startswith("linux"):
@@ -14,8 +15,6 @@ elif sys.platform == "darwin":
 elif sys.platform == "win32":
     # from . import windows
     pass
-
-logger = logging.getLogger("aw.watcher.window")
 
 
 def get_current_window_linux() -> dict:
@@ -57,6 +56,8 @@ def main():
     poll_time = 1.0
     update_time = 15.0
 
+    logger = logging.getLogger("aw.watchers.window")
+
     # req_version is 3.5 due to usage of subprocess.run
     # It would be nice to be able to use 3.4 as well since it's still common as of May 2016
     req_version = (3, 5)
@@ -66,12 +67,14 @@ def main():
         exit(1)
 
     parser = argparse.ArgumentParser("A cross platform window watcher for Linux, macOS and Windows.")
-    parser.add_argument("--testing", action="store_true")
+    parser.add_argument("--testing", dest="testing", action="store_true")
     parser.add_argument("--poll-time", type=float, default=1.0)
 
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.DEBUG if args.testing else logging.INFO)
+    setup_logging(name="aw-watcher-window", testing=args.testing,
+                  log_stderr=True, log_file=True)
+
     client = ActivityWatchClient("aw-watcher-window", testing=args.testing)
 
     bucketname = "{}_{}".format(client.client_name, client.client_hostname)
@@ -88,7 +91,7 @@ def main():
             now = datetime.now(timezone.utc)
             if current_window is None:
                 logger.debug('Unable to fetch window, trying again on next poll')
-            
+
             # If windows are not the same, insert it as a new event
             elif last_window != current_window:
                 if last_window is not None:
@@ -102,7 +105,7 @@ def main():
                     # Log
                     logger.debug("Window is no longer active: " + str(last_window))
                     logger.debug("Duration: {}s".format(str(duration.total_seconds())))
-                
+
                 # Create current_window event
                 duration = timedelta()
                 labels = ["title:" + current_window["title"]]
@@ -111,7 +114,7 @@ def main():
                 # Send events
                 client.send_event(bucketname, current_window_event)
                 last_event_time = now
-                
+
                 # Log
                 logger.info("Window became active: " + str(current_window))
                 # Store current window
