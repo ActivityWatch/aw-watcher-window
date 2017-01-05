@@ -5,6 +5,7 @@ from time import sleep
 from datetime import datetime, timezone, timedelta
 
 from aw_core.models import Event
+from aw_core.log import setup_logging
 from aw_client import ActivityWatchClient
 
 if sys.platform.startswith("linux"):
@@ -14,8 +15,6 @@ elif sys.platform == "darwin":
 elif sys.platform == "win32":
     # from . import windows
     pass
-
-logger = logging.getLogger("aw.watcher.window")
 
 
 def get_current_window_linux() -> dict:
@@ -57,6 +56,8 @@ def main():
     poll_time = 1.0
     update_time = 15.0
 
+    logger = logging.getLogger("aw.watchers.window")
+
     # req_version is 3.5 due to usage of subprocess.run
     # It would be nice to be able to use 3.4 as well since it's still common as of May 2016
     req_version = (3, 5)
@@ -66,12 +67,14 @@ def main():
         exit(1)
 
     parser = argparse.ArgumentParser("A cross platform window watcher for Linux, macOS and Windows.")
-    parser.add_argument("--testing", action="store_true")
+    parser.add_argument("--testing", dest="testing", action="store_true")
     parser.add_argument("--poll-time", type=float, default=1.0)
 
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.DEBUG if args.testing else logging.INFO)
+    setup_logging(name="aw-watcher-window", testing=args.testing,
+                  log_stderr=True, log_file=True)
+
     client = ActivityWatchClient("aw-watcher-window", testing=args.testing)
 
     bucketname = "{}_{}".format(client.client_name, client.client_hostname)
