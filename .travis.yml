@@ -14,6 +14,7 @@ matrix:
   allow_failures:
    # Doesn't currently work with pyinstaller
    - python: nightly
+   - python: osx
 
 
 before_install:
