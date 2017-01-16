@@ -79,7 +79,8 @@ def main():
 
     bucketname = "{}_{}".format(client.client_name, client.client_hostname)
     eventtype = "currentwindow"
-    client.create_bucket(bucketname, eventtype)
+    client.setup_bucket(bucketname, eventtype)
+    client.connect()
 
     last_window = None
     last_window_start = datetime.now(timezone.utc)
