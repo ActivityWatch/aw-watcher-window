@@ -1,5 +1,6 @@
 import logging
 import sys
+from typing import Optional
 from time import sleep
 from datetime import datetime, timezone, timedelta
 
@@ -14,7 +15,7 @@ elif sys.platform == "win32":
 
 logger = logging.getLogger("aw.watcher.window")
 
-def get_current_window_linux() -> dict:
+def get_current_window_linux() -> Optional[dict]:
     active_window_id = xprop.get_active_window_id()
     if active_window_id == "0x0":
         logger.warning("Failed to find active window, id found was 0x0")
@@ -24,18 +25,18 @@ def get_current_window_linux() -> dict:
     return window
 
 
-def get_current_window_macos() -> dict:
+def get_current_window_macos() -> Optional[dict]:
     info = macos.getInfo()
     app = macos.getApp(info)
     title = macos.getTitle(info)
     return {"title": title, "appname": app}
 
 
-def get_current_window_windows() -> dict:
+def get_current_window_windows() -> Optional[dict]:
     raise NotImplementedError
 
 
-def get_current_window() -> dict:
+def get_current_window() -> Optional[dict]:
     # TODO: Implement with_title kwarg as option
     if sys.platform.startswith("linux"):
         return get_current_window_linux()
