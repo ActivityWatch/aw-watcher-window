@@ -56,6 +56,10 @@ def main():
             labels.append("appname:" + current_window["appname"])
             current_window_event = Event(label=labels, timestamp=now)
 
-            client.heartbeat(bucketname, current_window_event, 2*args.poll_time)
+            # Set pulsetime to 1 second more than the poll_time
+            # This since the loop takes more time than poll_time
+            # due to sleep(poll_time).
+            client.heartbeat(bucketname, current_window_event,
+                             pulsetime=args.poll_time + 1.0)
 
         sleep(args.poll_time)
