@@ -15,9 +15,6 @@ logger = logging.getLogger("aw.watchers.window")
 
 
 def main():
-    poll_time = 1.0
-    update_time = 15.0
-
     # req_version is 3.5 due to usage of subprocess.run
     # It would be nice to be able to use 3.4 as well since it's still common as of May 2016
     req_version = (3, 5)
@@ -42,59 +39,23 @@ def main():
     client.setup_bucket(bucketname, eventtype)
     client.connect()
 
-    last_window = None
-    last_window_start = datetime.now(timezone.utc)
-    last_event_time = datetime.now(timezone.utc)
     while True:
         try:
             current_window = get_current_window()
-
-            now = datetime.now(timezone.utc)
-            if current_window is None:
-                logger.debug('Unable to fetch window, trying again on next poll')
-
-            # If windows are not the same, insert it as a new event
-            elif last_window != current_window:
-                if last_window is not None:
-                    # Create last_window event
-                    duration = now - last_window_start
-                    labels = ["title:" + last_window["title"]]
-                    labels.append("appname:" + last_window["appname"])
-                    last_window_event = Event(label=labels, timestamp=last_window_start, duration=duration)
-                    # Send last_window event
-                    client.replace_last_event(bucketname, last_window_event)
-                    # Log
-                    logger.debug("Window is no longer active: " + str(last_window))
-                    logger.debug("Duration: {}s".format(str(duration.total_seconds())))
-
-                # Create current_window event
-                duration = timedelta()
-                labels = ["title:" + current_window["title"]]
-                labels.append("appname:" + current_window["appname"])
-                current_window_event = Event(label=labels, timestamp=now, duration=duration)
-                # Send events
-                client.send_event(bucketname, current_window_event)
-                last_event_time = now
-
-                # Log
-                logger.info("Window became active: " + str(current_window))
-                # Store current window
-                last_window = current_window
-                last_window_start = now
-
-            # If windows are the same and update_time has passed (default 15sec), replace last event with this event for updated duration
-            elif now - timedelta(seconds=update_time) > last_event_time:
-                # Create current_window event
-                duration = now - last_window_start
-                labels = ["title:" + current_window["title"]]
-                labels.append("appname:" + current_window["appname"])
-                current_window_event = Event(label=labels, timestamp=last_window_start, duration=duration)
-
-                # Send current_window event
-                client.replace_last_event(bucketname, current_window_event)
-                last_event_time = now
-
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
             traceback.print_exc(e)
-        sleep(poll_time)
+            continue
+
+        now = datetime.now(timezone.utc)
+        if current_window is None:
+            logger.debug('Unable to fetch window, trying again on next poll')
+        else:
+            # Create current_window event
+            labels = ["title:" + current_window["title"]]
+            labels.append("appname:" + current_window["appname"])
+            current_window_event = Event(label=labels, timestamp=now)
+
+            client.heartbeat(bucketname, current_window_event, 2*args.poll_time)
+
+        sleep(args.poll_time)
