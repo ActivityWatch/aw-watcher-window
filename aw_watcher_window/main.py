@@ -9,7 +9,7 @@ from aw_core.models import Event
 from aw_core.log import setup_logging
 from aw_client import ActivityWatchClient
 
-from . import lib
+from .lib import get_current_window
 
 logger = logging.getLogger("aw.watchers.window")
 
