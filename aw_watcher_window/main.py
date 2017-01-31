@@ -1,3 +1,4 @@
+import argparse
 import logging
 import traceback
 import sys
@@ -8,55 +9,14 @@ from aw_core.models import Event
 from aw_core.log import setup_logging
 from aw_client import ActivityWatchClient
 
-if sys.platform.startswith("linux"):
-    from . import xprop
-elif sys.platform == "darwin":
-    from . import macos
-elif sys.platform == "win32":
-    # from . import windows
-    pass
+from . import lib
 
-
-def get_current_window_linux() -> dict:
-    active_window_id = xprop.get_active_window_id()
-    if active_window_id == "0x0":
-        print("Failed to find active window, id found was 0x0")
-        return None
-    w = xprop.get_windows([active_window_id], active_window_id)[0]
-    window = {"appname": w["class"][1], "title": w["name"]}
-    return window
-
-
-def get_current_window_macos() -> dict:
-    info = macos.getInfo()
-    app = macos.getApp(info)
-    title = macos.getTitle(info)
-    return {"title": title, "appname": app}
-
-
-def get_current_window_windows() -> dict:
-    raise NotImplementedError
-
-
-def get_current_window() -> dict:
-    # TODO: Implement with_title kwarg as option
-    if sys.platform.startswith("linux"):
-        return get_current_window_linux()
-    elif sys.platform == "darwin":
-        return get_current_window_macos()
-    elif sys.platform == "win32":
-        return get_current_window_windows()
-    else:
-        raise Exception("Unknown platform: {}".format(sys.platform))
+logger = logging.getLogger("aw.watchers.window")
 
 
 def main():
-    import argparse
-
     poll_time = 1.0
     update_time = 15.0
-
-    logger = logging.getLogger("aw.watchers.window")
 
     # req_version is 3.5 due to usage of subprocess.run
     # It would be nice to be able to use 3.4 as well since it's still common as of May 2016
