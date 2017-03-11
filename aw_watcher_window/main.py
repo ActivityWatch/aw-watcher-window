@@ -2,6 +2,7 @@ import argparse
 import logging
 import traceback
 import sys
+import os
 from time import sleep
 from datetime import datetime, timezone, timedelta
 
@@ -25,12 +26,16 @@ def main():
 
     parser = argparse.ArgumentParser("A cross platform window watcher for Linux, macOS and Windows.")
     parser.add_argument("--testing", dest="testing", action="store_true")
+    parser.add_argument("--verbose", dest="verbose", action="store_true")
     parser.add_argument("--poll-time", type=float, default=1.0)
 
     args = parser.parse_args()
 
-    setup_logging(name="aw-watcher-window", testing=args.testing,
+    setup_logging(name="aw-watcher-window", testing=args.testing, verbose=args.verbose,
                   log_stderr=True, log_file=True)
+
+    if sys.platform.startswith("linux") and ("DISPLAY" not in os.environ or not os.environ["DISPLAY"]):
+        raise Exception("DISPLAY environment variable not set")
 
     client = ActivityWatchClient("aw-watcher-window", testing=args.testing)
 
