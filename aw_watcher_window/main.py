@@ -11,11 +11,13 @@ from aw_core.log import setup_logging
 from aw_client import ActivityWatchClient
 
 from .lib import get_current_window
+from .config import watcher_config
 
 logger = logging.getLogger("aw.watchers.window")
 
 
 def main():
+    """ Verify python version >= 3.5 """
     # req_version is 3.5 due to usage of subprocess.run
     # It would be nice to be able to use 3.4 as well since it's still common as of May 2016
     req_version = (3, 5)
@@ -24,10 +26,15 @@ def main():
         logger.error("Your Python version is too old, 3.5 or higher is required")
         exit(1)
 
+    """ Read settings from config """
+    poll_time = watcher_config["aw-watcher-window"].getfloat("poll_time")
+    update_time = watcher_config["aw-watcher-window"].getfloat("update_time")
+
+    """ Parse arguments """
     parser = argparse.ArgumentParser("A cross platform window watcher for Linux, macOS and Windows.")
     parser.add_argument("--testing", dest="testing", action="store_true")
     parser.add_argument("--verbose", dest="verbose", action="store_true")
-    parser.add_argument("--poll-time", type=float, default=1.0)
+    parser.add_argument("--poll-time", type=float, default=poll_time)
 
     args = parser.parse_args()
 
