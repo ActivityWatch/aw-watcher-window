@@ -34,7 +34,7 @@ def xprop_root() -> str:
 def get_active_window_id():
     lines = xprop_root().split("\n")
     match="_NET_ACTIVE_WINDOW"
-    result = None
+    result = False
     for line in lines:
         if match in line:
             result = line
