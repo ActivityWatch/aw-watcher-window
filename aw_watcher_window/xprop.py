@@ -34,16 +34,16 @@ def xprop_root() -> str:
 def get_active_window_id():
     lines = xprop_root().split("\n")
     match="_NET_ACTIVE_WINDOW"
-    result = False
+    result = None
     for line in lines:
         if match in line:
             result = line
             break
+    wid = "0x0"
     if result:
         wids = re.findall("0x[0-9a-f]*", result)
-    wid = "0x0"
-    if len(wids) > 0:
-        wid = wids[0]
+        if len(wids) > 0:
+            wid = wids[0]
     return wid
 
 
