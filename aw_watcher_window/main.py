@@ -64,9 +64,9 @@ def main():
             logger.debug('Unable to fetch window, trying again on next poll')
         else:
             # Create current_window event
-            labels = ["title:" + current_window["title"]]
-            labels.append("appname:" + current_window["appname"])
-            current_window_event = Event(label=labels, timestamp=now)
+            label = (current_window["appname"])
+            keyvals = {"title": current_window["title"]}
+            current_window_event = Event(label=label, timestamp=now, keyvals=keyvals)
 
             # Set pulsetime to 1 second more than the poll_time
             # This since the loop takes more time than poll_time
