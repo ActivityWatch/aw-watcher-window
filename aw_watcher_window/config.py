@@ -9,4 +9,4 @@ default_client_config["aw-watcher-window"] = {
     "update_time": "15.0",
 }
 
-watcher_config = load_config("aw-watcher_window", default_client_config)
+watcher_config = load_config("aw-watcher-window", default_client_config)
