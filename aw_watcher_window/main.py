@@ -54,6 +54,7 @@ def main():
     while True:
         try:
             current_window = get_current_window()
+            logger.debug(current_window)
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
             traceback.print_exc(e)
