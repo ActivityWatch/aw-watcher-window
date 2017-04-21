@@ -30,8 +30,7 @@ before_install:
 
 
 install:
- - python setup.py install
-
+ - "make build"
 
 script:
- - pyinstaller aw-watcher-window.spec
+ - "make package"
