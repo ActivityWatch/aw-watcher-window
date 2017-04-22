@@ -65,8 +65,8 @@ def main():
         else:
             # Create current_window event
             label = (current_window["appname"])
-            keyvals = {"title": current_window["title"]}
-            current_window_event = Event(label=label, timestamp=now, keyvals=keyvals)
+            data = {"title": current_window["title"]}
+            current_window_event = Event(label=label, timestamp=now, data=data)
 
             # Set pulsetime to 1 second more than the poll_time
             # This since the loop takes more time than poll_time
