@@ -33,4 +33,5 @@ install:
  - "make build"
 
 script:
+ - "make test"
  - "make package"
