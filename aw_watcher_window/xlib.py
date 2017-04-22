@@ -1,6 +1,5 @@
 from typing import Optional
 import logging
-from typing import Tuple
 
 import Xlib
 import Xlib.display
@@ -11,7 +10,7 @@ display = Xlib.display.Display()
 screen = display.screen()
 
 
-def get_current_window_id() -> Optional[int]:
+def _get_current_window_id() -> Optional[int]:
     atom = display.get_atom("_NET_ACTIVE_WINDOW")
     window_prop = screen.root.get_full_property(atom, X.AnyPropertyType)
 
@@ -25,15 +24,23 @@ def get_current_window_id() -> Optional[int]:
     return window_id if window_id != 0 else None
 
 
-def get_window(window_id: int) -> Window:
+def _get_window(window_id: int) -> Window:
     return display.create_resource_object('window', window_id)
+
+
+def get_current_window() -> Optional[Window]:
+    window_id = _get_current_window_id()
+    if window_id is None:
+        return None
+    else:
+        return _get_window(window_id)
 
 # Things that can lead to unknown cls/name:
 #  - (cls+name) Empty desktop in xfce (no window focused)
 #  - (name) Chrome (fixed, didn't support when WM_NAME was UTF8_STRING)
 
 
-def _get_window_name(window: Window) -> str:
+def get_window_name(window: Window) -> str:
     name = None
 
     try:
@@ -50,7 +57,7 @@ def _get_window_name(window: Window) -> str:
     return name
 
 
-def _get_window_class(window: Window) -> str:
+def get_window_class(window: Window) -> str:
     cls = None
 
     try:
@@ -65,14 +72,10 @@ def _get_window_class(window: Window) -> str:
         logging.warning("Code made an unclear branch")
         window = window.query_tree().parent
         if window:
-            return _get_window_class(window)
+            return get_window_class(window)
         else:
             return "unknown"
     return cls
-
-
-def get_window_name(window: Window) -> Tuple[str, str]:
-    return _get_window_name(window), _get_window_class(window)
 
 
 def get_window_pid(window: Window) -> str:
@@ -90,15 +93,13 @@ if __name__ == "__main__":
 
     while True:
         print("-" * 20)
-        window_id = get_current_window_id()
-        if window_id is None:
-            print("unable to get window id")
+        window = get_current_window()
+        if window is None:
+            print("unable to get active window")
             name, cls = "unknown", "unknown"
         else:
-            print("wid:", window_id)
-            window = get_window(window_id)
-            cls = _get_window_class(window)
-            name = _get_window_name(window)
+            cls = get_window_class(window)
+            name = get_window_name(window)
         print("name:", name)
         print("class:", cls)
 
