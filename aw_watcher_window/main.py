@@ -16,6 +16,13 @@ from .config import watcher_config
 logger = logging.getLogger("aw.watchers.window")
 
 
+def get_labels_for(window, exclude_title=False):
+    labels = []
+    labels.append("title:" + window["title"] if not exclude_title else "title:excluded")
+    labels.append("appname:" + window["appname"])
+    return labels
+
+
 def main():
     """ Verify python version >= 3.5 """
     # req_version is 3.5 due to usage of subprocess.run
@@ -28,11 +35,11 @@ def main():
 
     """ Read settings from config """
     poll_time = watcher_config["aw-watcher-window"].getfloat("poll_time")
-    update_time = watcher_config["aw-watcher-window"].getfloat("update_time")
 
     """ Parse arguments """
     parser = argparse.ArgumentParser("A cross platform window watcher for Linux, macOS and Windows.")
     parser.add_argument("--testing", dest="testing", action="store_true")
+    parser.add_argument("--exclude-title", dest="exclude_title", action="store_true")
     parser.add_argument("--verbose", dest="verbose", action="store_true")
     parser.add_argument("--poll-time", type=float, default=poll_time)
 
@@ -65,8 +72,7 @@ def main():
             logger.debug('Unable to fetch window, trying again on next poll')
         else:
             # Create current_window event
-            labels = ["title:" + current_window["title"]]
-            labels.append("appname:" + current_window["appname"])
+            labels = get_labels_for(current_window, exclude_title=args.exclude_title)
             current_window_event = Event(label=labels, timestamp=now)
 
             # Set pulsetime to 1 second more than the poll_time
