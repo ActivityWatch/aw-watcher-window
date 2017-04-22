@@ -97,8 +97,8 @@ if __name__ == "__main__":
         else:
             print("wid:", window_id)
             window = get_window(window_id)
-            cls = _get_window_name(window)
-            name = _get_window_class(window)
+            cls = _get_window_class(window)
+            name = _get_window_name(window)
         print("name:", name)
         print("class:", cls)
 
