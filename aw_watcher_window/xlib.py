@@ -47,7 +47,7 @@ def get_window_name(window: Window) -> str:
         # Doesn't seem to work for UTF8 titles:
         # name = window.get_wm_name()
         p_wm_name = window.get_full_property(Xatom.WM_NAME, 0)
-        name = p_wm_name.value
+        name = p_wm_name.value.decode("utf8")
     except Xlib.error.BadWindow:
         logging.warning("Unable to get window name, got a BadWindow exception.")
 
