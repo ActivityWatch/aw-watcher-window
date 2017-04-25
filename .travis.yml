@@ -14,19 +14,18 @@ matrix:
   allow_failures:
    # Doesn't currently work with pyinstaller
    - python: nightly
-   - os: osx
 
 
 before_install:
  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then
-     brew update;
-     brew install python3;
+     wget -O python3.pkg https://www.python.org/ftp/python/3.5.2/python-3.5.2-macosx10.6.pkg;
+     sudo installer -pkg python3.pkg -target /;
      pip3 install --upgrade pip setuptools wheel virtualenv;
      virtualenv venv -p python3;
      source venv/bin/activate;
    fi
  - python --version
- - pip install pyinstaller mypy
+ - pip install pytest mypy pyinstaller
 
 
 install:
