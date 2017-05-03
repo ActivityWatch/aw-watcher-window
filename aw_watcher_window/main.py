@@ -28,11 +28,11 @@ def main():
 
     """ Read settings from config """
     poll_time = watcher_config["aw-watcher-window"].getfloat("poll_time")
-    update_time = watcher_config["aw-watcher-window"].getfloat("update_time")
 
     """ Parse arguments """
     parser = argparse.ArgumentParser("A cross platform window watcher for Linux, macOS and Windows.")
     parser.add_argument("--testing", dest="testing", action="store_true")
+    parser.add_argument("--exclude-title", dest="exclude_title", action="store_true")
     parser.add_argument("--verbose", dest="verbose", action="store_true")
     parser.add_argument("--poll-time", type=float, default=poll_time)
 
@@ -54,6 +54,7 @@ def main():
     while True:
         try:
             current_window = get_current_window()
+            logger.debug(current_window)
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
             traceback.print_exc(e)
@@ -64,7 +65,10 @@ def main():
             logger.debug('Unable to fetch window, trying again on next poll')
         else:
             # Create current_window event
-            data = {"app": current_window["appname"], "title": current_window["title"]}
+            data = {
+                "app": current_window["appname"],
+                "title": current_window["title"] if not args.exclude_title else "title:excluded"
+            }
             current_window_event = Event(timestamp=now, data=data)
 
             # Set pulsetime to 1 second more than the poll_time
