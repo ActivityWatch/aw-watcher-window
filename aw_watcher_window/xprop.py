@@ -33,7 +33,7 @@ def xprop_root() -> str:
 
 def get_active_window_id():
     lines = xprop_root().split("\n")
-    match="_NET_ACTIVE_WINDOW"
+    match="_NET_ACTIVE_WINDOW(WINDOW)"
     result = None
     for line in lines:
         if match in line:
@@ -117,3 +117,11 @@ def get_window(wid, active_window=False):
 
 def get_windows(wids, active_window_id=None):
     return [get_window(wid, active_window=(wid == active_window_id)) for wid in wids]
+
+
+if __name__ == "__main__":
+    from time import sleep
+    logging.basicConfig(level=logging.INFO)
+    while True:
+        sleep(1)
+        print("Active window id: " + str(get_active_window_id()))
