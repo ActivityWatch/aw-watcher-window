@@ -11,7 +11,7 @@ from aw_core.log import setup_logging
 from aw_client import ActivityWatchClient
 
 from .lib import get_current_window
-from .config import watcher_config
+from .config import load_config
 
 logger = logging.getLogger("aw.watchers.window")
 
@@ -20,6 +20,7 @@ def main():
     """ Verify python version >= 3.5 """
     # req_version is 3.5 due to usage of subprocess.run
     # It would be nice to be able to use 3.4 as well since it's still common as of May 2016
+    # TODO: Make this a util function in aw_core
     req_version = (3, 5)
     cur_version = sys.version_info
     if not cur_version >= req_version:
@@ -27,7 +28,8 @@ def main():
         exit(1)
 
     """ Read settings from config """
-    poll_time = watcher_config["aw-watcher-window"].getfloat("poll_time")
+    config = load_config()
+    poll_time = config["aw-watcher-window"].getfloat("poll_time")
 
     """ Parse arguments """
     parser = argparse.ArgumentParser("A cross platform window watcher for Linux, macOS and Windows.")
