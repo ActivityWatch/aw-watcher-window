@@ -10,7 +10,7 @@ elif sys.platform == "darwin":
 elif sys.platform in ["win32", "cygwin"]:
     from . import windows
 
-logger = logging.getLogger("aw.watcher.window")
+logger = logging.getLogger(__name__)
 
 
 def get_current_window_linux() -> Optional[dict]:

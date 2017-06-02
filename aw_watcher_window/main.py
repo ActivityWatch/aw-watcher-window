@@ -4,8 +4,9 @@ import traceback
 import sys
 import os
 from time import sleep
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 
+from aw_core.util import assert_version
 from aw_core.models import Event
 from aw_core.log import setup_logging
 from aw_client import ActivityWatchClient
@@ -13,19 +14,13 @@ from aw_client import ActivityWatchClient
 from .lib import get_current_window
 from .config import load_config
 
-logger = logging.getLogger("aw.watchers.window")
+logger = logging.getLogger(__name__)
 
 
 def main():
     """ Verify python version >= 3.5 """
     # req_version is 3.5 due to usage of subprocess.run
-    # It would be nice to be able to use 3.4 as well since it's still common as of May 2016
-    # TODO: Make this a util function in aw_core
-    req_version = (3, 5)
-    cur_version = sys.version_info
-    if not cur_version >= req_version:
-        logger.error("Your Python version is too old, 3.5 or higher is required")
-        exit(1)
+    assert_version((3, 5))
 
     """ Read settings from config """
     config = load_config()
@@ -53,6 +48,7 @@ def main():
     client.setup_bucket(bucketname, eventtype)
     client.connect()
 
+    logger.info("aw-watcher-window has started")
     while True:
         try:
             current_window = get_current_window()
