@@ -4,7 +4,7 @@ from subprocess import PIPE
 import re
 import logging
 
-logger = logging.getLogger("aw_watcher_x11.xprop")
+logger = logging.getLogger(__name__)
 
 # req_version is 3.5 due to usage of subprocess.run
 # It would be nice to be able to use 3.4 as well since it's still common as of May 2016

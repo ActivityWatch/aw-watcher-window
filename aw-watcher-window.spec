@@ -3,8 +3,8 @@
 block_cipher = None
 
 
-a = Analysis(['__main__.py'],
-             pathex=['/home/erb/Programming/activitywatch/aw-watcher-window'],
+a = Analysis(['aw_watcher_window/__main__.py'],
+             pathex=[],
              binaries=None,
              datas=None,
              hiddenimports=[],
