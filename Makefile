@@ -1,7 +1,7 @@
 .PHONY: build
 
 build:
-	python3 setup.py install
+	pip3 install .
 
 test:
 	python3 -c "import aw_watcher_window"
