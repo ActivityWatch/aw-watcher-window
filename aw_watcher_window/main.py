@@ -73,6 +73,6 @@ def main():
             # This since the loop takes more time than poll_time
             # due to sleep(poll_time).
             client.heartbeat(bucketname, current_window_event,
-                             pulsetime=args.poll_time + 1.0)
+                             pulsetime=args.poll_time + 1.0, queued=True)
 
         sleep(args.poll_time)
