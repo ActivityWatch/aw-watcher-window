@@ -6,37 +6,26 @@ import os
 from time import sleep
 from datetime import datetime, timezone
 
+from aw_core.util import assert_version
 from aw_core.models import Event
 from aw_core.log import setup_logging
 from aw_client import ActivityWatchClient
 
 from .lib import get_current_window
-from .config import watcher_config
+from .config import load_config
 
-logger = logging.getLogger("aw.watchers.window")
-
-
-def get_labels_for(window, exclude_title=False):
-    labels = []
-    labels.append("title:" + window["title"] if not exclude_title else "title:excluded")
-    labels.append("appname:" + window["appname"])
-    return labels
+logger = logging.getLogger(__name__)
 
 
 def main():
-    """ Verify python version >= 3.5 """
-    # req_version is 3.5 due to usage of subprocess.run
-    # It would be nice to be able to use 3.4 as well since it's still common as of May 2016
-    req_version = (3, 5)
-    cur_version = sys.version_info
-    if not cur_version >= req_version:
-        logger.error("Your Python version is too old, 3.5 or higher is required")
-        exit(1)
+    # Verify python version is >=3.5
+    #   req_version is 3.5 due to usage of subprocess.run
+    assert_version((3, 5))
 
-    """ Read settings from config """
-    config = watcher_config["aw-watcher-window"]
+    # Read settings from config
+    config = load_config()
 
-    """ Parse arguments """
+    # Parse arguments
     parser = argparse.ArgumentParser("A cross platform window watcher for Linux, macOS and Windows.")
     parser.add_argument("--testing", dest="testing", action="store_true")
     parser.add_argument("--exclude-title", dest="exclude_title", action="store_true")
@@ -59,6 +48,7 @@ def main():
     client.setup_bucket(bucketname, eventtype)
     client.connect()
 
+    logger.info("aw-watcher-window has started")
     while True:
         try:
             current_window = get_current_window()
@@ -73,8 +63,11 @@ def main():
             logger.debug('Unable to fetch window, trying again on next poll')
         else:
             # Create current_window event
-            labels = get_labels_for(current_window, exclude_title=args.exclude_title)
-            current_window_event = Event(label=labels, timestamp=now)
+            data = {
+                "app": current_window["appname"],
+                "title": current_window["title"] if not args.exclude_title else "title:excluded"
+            }
+            current_window_event = Event(timestamp=now, data=data)
 
             # Set pulsetime to 1 second more than the poll_time
             # This since the loop takes more time than poll_time

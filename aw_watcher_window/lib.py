@@ -1,9 +1,5 @@
-import logging
 import sys
 from typing import Optional
-
-
-logger = logging.getLogger("aw.watcher.window")
 
 
 def get_current_window_linux() -> Optional[dict]:

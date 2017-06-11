@@ -18,6 +18,7 @@ setup(name='aw-watcher-window',
       author_email='erik@bjareho.lt, exoji2e@gmail.com',
       url='https://github.com/ActivityWatch/aw-watcher-window',
       packages=['aw_watcher_window'],
+      package_data={'aw_watcher_window': ['*.scpt']},
       install_requires=[
           'aw-client',
       ] + additional_reqs,
