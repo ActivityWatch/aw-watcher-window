@@ -17,10 +17,11 @@ setup(name='aw-watcher-window',
       packages=['aw_watcher_window'],
       package_data={'aw_watcher_window': ['*.scpt']},
       install_requires=[
-          'aw-client',
+          'aw-client>=0.2.0',
       ] + additional_reqs,
       dependency_links=[
-          'https://github.com/ActivityWatch/aw-client/tarball/master#egg=aw-client'
+          'https://github.com/ActivityWatch/aw-core/tarball/master#egg=aw-core-0.2.0',
+          'https://github.com/ActivityWatch/aw-client/tarball/master#egg=aw-client-0.2.0'
       ],
       entry_points={
           'console_scripts': ['aw-watcher-window = aw_watcher_window:main']
