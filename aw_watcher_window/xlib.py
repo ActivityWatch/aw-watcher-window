@@ -9,6 +9,9 @@ from Xlib import X, Xatom
 display = Xlib.display.Display()
 screen = display.screen()
 
+NET_WM_NAME = display.intern_atom("_NET_WM_NAME")
+UTF8_STRING = display.intern_atom("UTF8_STRING")
+
 
 def _get_current_window_id() -> Optional[int]:
     atom = display.get_atom("_NET_ACTIVE_WINDOW")
@@ -41,28 +44,24 @@ def get_current_window() -> Optional[Window]:
 
 
 def get_window_name(window: Window) -> str:
-    name = None
-
-    try:
-        # Doesn't seem to work for UTF8 titles:
-        # name = window.get_wm_name()
-        wm_name = window.get_full_property(Xatom.WM_NAME, 0).value
-        if type(wm_name) == bytes:
-            try:
-                wm_name = wm_name.decode("latin1")
-            except UnicodeDecodeError:
-                print("Fail")
-                print(wm_name)
-                wm_name = wm_name.decode("utf-8", "ignore")
-                print(wm_name)
-        name = wm_name
-    except Xlib.error.BadWindow:
-        logging.warning("Unable to get window name, got a BadWindow exception.")
-
-    if not name:
-        name = "unknown"
-
-    return name
+    """ After some annoying debugging I resorted to pretty much copying selfspy.
+        Source: https://github.com/gurgeh/selfspy/blob/8a34597f81000b3a1be12f8cde092a40604e49cf/selfspy/sniff_x.py#L165 """
+    d = window.get_full_property(NET_WM_NAME, UTF8_STRING)
+    if d is None or d.format != 8:
+        # Fallback.
+        r = window.get_wm_name()
+        if type(r) == str:
+            return r
+        else:
+            logging.warning("I don't think this case will ever happen, but not sure so leaving this message here just in case.")
+            return r.decode('latin1')  # WM_NAME with type=STRING.
+    else:
+        # Fixing utf8 issue on Ubuntu (https://github.com/gurgeh/selfspy/issues/133)
+        # Thanks to https://github.com/gurgeh/selfspy/issues/133#issuecomment-142943681
+        try:
+            return d.value.decode('utf8')
+        except UnicodeError:
+            return d.value.encode('utf8').decode('utf8')
 
 
 def get_window_class(window: Window) -> str:
