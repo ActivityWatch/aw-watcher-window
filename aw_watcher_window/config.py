@@ -9,5 +9,10 @@ def load_config():
         "poll_time": "1.0",
         "update_time": "15.0",
     }
+    default_client_config["aw-watcher-window-testing"] = {
+        "poll_time": "1.0",
+        "update_time": "5.0",
+    }
 
-    return _load_config("aw-watcher-window", default_client_config)
+    # TODO: Handle so aw-watcher-window testing gets loaded instead of testing is on
+    return _load_config("aw-watcher-window", default_client_config)["aw-watcher-window"]
