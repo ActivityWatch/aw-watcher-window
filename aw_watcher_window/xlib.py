@@ -48,7 +48,14 @@ def get_window_name(window: Window) -> str:
         # name = window.get_wm_name()
         wm_name = window.get_full_property(Xatom.WM_NAME, 0).value
         if type(wm_name) == bytes:
-            wm_name = wm_name.decode("utf8")
+            try:
+                wm_name = wm_name.decode("latin1")
+            except UnicodeDecodeError:
+                print("Fail")
+                print(wm_name)
+                wm_name = wm_name.decode("utf-8", "ignore")
+                print(wm_name)
+        name = wm_name
     except Xlib.error.BadWindow:
         logging.warning("Unable to get window name, got a BadWindow exception.")
 
@@ -63,7 +70,7 @@ def get_window_class(window: Window) -> str:
 
     try:
         cls = window.get_wm_class()
-        cls = cls[0].lower()
+        cls = cls[1]
     except Xlib.error.BadWindow:
         logging.warning("Unable to get window class, got a BadWindow exception.")
 
