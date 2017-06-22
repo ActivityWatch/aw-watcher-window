@@ -27,4 +27,7 @@ setup(name='aw-watcher-window',
       ],
       entry_points={
           'console_scripts': ['aw-watcher-window = aw_watcher_window:main']
-      })
+      },
+      classifiers=[
+          'Programming Language :: Python :: 3'
+      ])
