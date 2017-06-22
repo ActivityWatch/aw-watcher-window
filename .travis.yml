@@ -25,7 +25,7 @@ before_install:
      source venv/bin/activate;
    fi
  - python --version
- - pip install pytest pyinstaller
+ - pip install pytest mypy pyinstaller
 
 
 install:

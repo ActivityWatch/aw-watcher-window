@@ -1,163 +1,113 @@
-"""
-Highly WIP, copy-pasted from activitywatch-old.
-
-Uses python-xlib.
-"""
-
 from typing import Optional
-from time import sleep
-from datetime import datetime, timedelta
 import logging
-
-import psutil
 
 import Xlib
 import Xlib.display
 from Xlib.xobject.drawable import Window
 from Xlib import X, Xatom
 
+display = Xlib.display.Display()
+screen = display.screen()
 
-class Watcher:
-    def __init__(self):
-        self.display = Xlib.display.Display()
-        self.screen = self.display.screen()
-
-        self._last_window = None
-        self._active_window = None
-
-        self.window_name = None
-        self.pid = None
-        self.cls = None
-        self.process = None
-        self.selected_at = None
-
-        self.last_name = None
-        self.last_pid = None
-        self.last_cls = None
-        self.last_process = None
-        self.last_selected_at = None
-
-    def last_window(self) -> Window:
-        return self._last_window
-
-    def update_last_window(self):
-        self._last_window = self.active_window
-        self.last_selected_at = self.selected_at
-        self.last_pid = self.pid
-        self.last_cmd = self.cmd
-        self.last_name, self.last_cls = self.window_name, self.cls
-        self.last_process = self.process
-
-    def active_window(self) -> Window:
-        return self._active_window
-
-    def get_current_window_id(self) -> Optional[int]:
-        atom = self.display.get_atom("_NET_ACTIVE_WINDOW")
-        window_prop = self.screen.root.get_full_property(atom, X.AnyPropertyType)
-        if window_prop is None:
-            logging.warning("window_prop was None")
-            return None
-        window_id = window_prop.value[-1] if window_prop.value[-1] != 0 else window_prop.value[0]
-        return window_id
-
-    def update_active_window(self) -> bool:
-        """Updates the active window and stores its properties
-        Returns True if changed, False if was unchanged"""
-        window_id = self.get_current_window_id()
-        if not window_id:
-            return False
-        window = self.get_window(window_id)
-
-        if self.last_window is not None:
-            # Was not the first window
-            if self.last_window.id == window_id:
-                # If window was same as last
-                return False
-
-        try:
-            pid = self.get_window_pid(window)
-        except Xlib.error.BadWindow as e:
-            logging.error("Error while updating active window, trying again.")
-            logging.error(e, exc_info=True)
-            sleep(1)
-            return False
-
-        self.pid = pid
-        self.window_name, self.cls = self.get_window_name(window)
-        self.process = self.process_by_pid(self.pid)
-        self.cmd = self.process.cmdline()
-        self.selected_at = datetime.now()
-
-        self._active_window = window
-
-        return True
-
-    def run(self):
-        success = False
-        while not success:
-            success = self.update_active_window()
-
-        logging.debug("First focus is '{}'".format(self.window_name))
-
-        self.update_last_window()
-
-        while True:
-            # TODO: Make sleep interval a setting
-            sleep(0.1)
-            try:
-                self.loop()
-            except Exception as e:
-                logging.error("Exception was thrown while running loop: '{}', trying again.".format(e))
-                continue
-
-    def loop(self):
-        changed = self.update_active_window()
-        if not changed:
-            return
-
-        # Creation of the activity that just ended
-        event = Event(self.last_cls, self.last_selected_at, datetime.now(), cmd=self.last_cmd)
-
-        logging.debug("Switched to '{}' with PID: {}".format(self.cls, self.pid))
-
-        self.update_last_window()
+NET_WM_NAME = display.intern_atom("_NET_WM_NAME")
+UTF8_STRING = display.intern_atom("UTF8_STRING")
 
 
-    def get_window(self, window_id) -> Window:
-        return self.display.create_resource_object('window', window_id)
+def _get_current_window_id() -> Optional[int]:
+    atom = display.get_atom("_NET_ACTIVE_WINDOW")
+    window_prop = screen.root.get_full_property(atom, X.AnyPropertyType)
 
-    @staticmethod
-    def get_window_name(window) -> (str, str):
-        name, cls = None, None
-        while window:
-            cls = window.get_wm_class()
-            name = window.get_wm_name()
-            if not cls:
-                window = window.query_tree().parent
-            else:
-                break
-        return name, cls
+    if window_prop is None:
+        logging.warning("window_prop was None")
+        return None
 
-    def get_window_pid(self, window: Window) -> str:
-        atom = self.display.get_atom("_NET_WM_PID")
-        pid_property = window.get_full_property(atom, X.AnyPropertyType)
-        if pid_property:
-            pid = pid_property.value[-1]
-            return pid
+    # window_prop may contain more than one value, but it seems that it's always the first we want.
+    # The second has in my attempts always been 0 or rubbish.
+    window_id = window_prop.value[0]
+    return window_id if window_id != 0 else None
+
+
+def _get_window(window_id: int) -> Window:
+    return display.create_resource_object('window', window_id)
+
+
+def get_current_window() -> Optional[Window]:
+    window_id = _get_current_window_id()
+    if window_id is None:
+        return None
+    else:
+        return _get_window(window_id)
+
+# Things that can lead to unknown cls/name:
+#  - (cls+name) Empty desktop in xfce (no window focused)
+#  - (name) Chrome (fixed, didn't support when WM_NAME was UTF8_STRING)
+
+
+def get_window_name(window: Window) -> str:
+    """ After some annoying debugging I resorted to pretty much copying selfspy.
+        Source: https://github.com/gurgeh/selfspy/blob/8a34597f81000b3a1be12f8cde092a40604e49cf/selfspy/sniff_x.py#L165 """
+    d = window.get_full_property(NET_WM_NAME, UTF8_STRING)
+    if d is None or d.format != 8:
+        # Fallback.
+        r = window.get_wm_name()
+        if type(r) == str:
+            return r
         else:
-            # TODO: Needed?
-            raise Exception("pid_property was None")
+            logging.warning("I don't think this case will ever happen, but not sure so leaving this message here just in case.")
+            return r.decode('latin1')  # WM_NAME with type=STRING.
+    else:
+        # Fixing utf8 issue on Ubuntu (https://github.com/gurgeh/selfspy/issues/133)
+        # Thanks to https://github.com/gurgeh/selfspy/issues/133#issuecomment-142943681
+        try:
+            return d.value.decode('utf8')
+        except UnicodeError:
+            return d.value.encode('utf8').decode('utf8')
 
-    def get_current_pid(self):
-        return self.get_window_pid(self.active_window)
 
-    @staticmethod
-    def process_by_pid(pid: str) -> psutil.Process:
-        return psutil.Process(int(pid))
+def get_window_class(window: Window) -> str:
+    cls = None
+
+    try:
+        cls = window.get_wm_class()
+        cls = cls[1]
+    except Xlib.error.BadWindow:
+        logging.warning("Unable to get window class, got a BadWindow exception.")
+
+    # TODO: Is this needed?
+    if not cls:
+        print("")
+        logging.warning("Code made an unclear branch")
+        window = window.query_tree().parent
+        if window:
+            return get_window_class(window)
+        else:
+            return "unknown"
+    return cls
+
+
+def get_window_pid(window: Window) -> str:
+    atom = display.get_atom("_NET_WM_PID")
+    pid_property = window.get_full_property(atom, X.AnyPropertyType)
+    if pid_property:
+        pid = pid_property.value[-1]
+        return pid
+    else:
+        # TODO: Needed?
+        raise Exception("pid_property was None")
 
 if __name__ == "__main__":
-    w = Watcher()
-    wid = w.get_current_window_id()
-    window = w.get_window(wid)
-    print(wid, window)
-    print(w.get_window_name(window))
+    from time import sleep
+
+    while True:
+        print("-" * 20)
+        window = get_current_window()
+        if window is None:
+            print("unable to get active window")
+            name, cls = "unknown", "unknown"
+        else:
+            cls = get_window_class(window)
+            name = get_window_name(window)
+        print("name:", name)
+        print("class:", cls)
+
+        sleep(1)

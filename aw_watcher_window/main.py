@@ -18,25 +18,25 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    """ Verify python version >= 3.5 """
-    # req_version is 3.5 due to usage of subprocess.run
+    # Verify python version is >=3.5
+    #   req_version is 3.5 due to usage of subprocess.run
     assert_version((3, 5))
 
-    """ Read settings from config """
+    # Read settings from config
     config = load_config()
-    poll_time = config["aw-watcher-window"].getfloat("poll_time")
 
-    """ Parse arguments """
+    # Parse arguments
     parser = argparse.ArgumentParser("A cross platform window watcher for Linux, macOS and Windows.")
     parser.add_argument("--testing", dest="testing", action="store_true")
     parser.add_argument("--exclude-title", dest="exclude_title", action="store_true")
     parser.add_argument("--verbose", dest="verbose", action="store_true")
-    parser.add_argument("--poll-time", type=float, default=poll_time)
-
+    parser.add_argument("--poll-time", type=float, default=config.getfloat("poll_time"))
     args = parser.parse_args()
 
     setup_logging(name="aw-watcher-window", testing=args.testing, verbose=args.verbose,
                   log_stderr=True, log_file=True)
+
+    logging.info("Running watcher with poll time {} seconds".format(args.poll_time))
 
     if sys.platform.startswith("linux") and ("DISPLAY" not in os.environ or not os.environ["DISPLAY"]):
         raise Exception("DISPLAY environment variable not set")
