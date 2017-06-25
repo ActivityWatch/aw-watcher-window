@@ -43,36 +43,34 @@ def main():
 
     client = ActivityWatchClient("aw-watcher-window", testing=args.testing)
 
-    bucketname = "{}_{}".format(client.client_name, client.client_hostname)
-    eventtype = "currentwindow"
-    client.setup_bucket(bucketname, eventtype)
-    client.connect()
+    bucket_id = "{}_{}".format(client.name, client.hostname)
+    event_type = "currentwindow"
+
+    client.create_bucket(bucket_id, event_type, queued=True)
 
     logger.info("aw-watcher-window has started")
     while True:
         try:
-            current_window = get_current_window()
-            logger.debug(current_window)
+            window = get_current_window()
+            logger.debug(window)
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
             traceback.print_exc(e)
             continue
 
         now = datetime.now(timezone.utc)
-        if current_window is None:
+        if window is None:
             logger.debug('Unable to fetch window, trying again on next poll')
         else:
-            # Create current_window event
-            data = {
-                "app": current_window["appname"],
-                "title": current_window["title"] if not args.exclude_title else "title:excluded"
-            }
-            current_window_event = Event(timestamp=now, data=data)
+            window_event = Event(timestamp=now, data={
+                "app": window["appname"],
+                "title": window["title"] if not args.exclude_title else "title"
+            })
 
             # Set pulsetime to 1 second more than the poll_time
             # This since the loop takes more time than poll_time
             # due to sleep(poll_time).
-            client.heartbeat(bucketname, current_window_event,
+            client.heartbeat(bucket_id, window_event,
                              pulsetime=args.poll_time + 1.0, queued=True)
 
         sleep(args.poll_time)
