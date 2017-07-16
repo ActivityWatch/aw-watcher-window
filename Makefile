@@ -1,7 +1,7 @@
 .PHONY: build
 
 build:
-	pip3 install . --process-dependency-links
+	pip3 install . --process-dependency-links --user
 
 test:
 	python3 -c "import aw_watcher_window"
