@@ -39,7 +39,7 @@ def main():
     bucket_id = "{}_{}".format(client.client_name, client.client_hostname)
     event_type = "currentwindow"
     client.create_bucket(bucket_id, event_type, queued=True)
-
+    
     logger.info("aw-watcher-window has started")
     with client:
         heartbeat_loop(client, bucket_id, poll_time=args.poll_time, exclude_title=args.exclude_title)
@@ -54,9 +54,12 @@ def parse_args(default_poll_time: float):
     parser.add_argument("--poll-time", dest="poll_time", type=float, default=default_poll_time)
     return parser.parse_args()
 
-
 def heartbeat_loop(client, bucket_id, poll_time, exclude_title=False):
     while True:
+        if os.getppid() == 1:
+            logger.info("window-watcher stopped because parent process died")
+            break
+
         try:
             current_window = get_current_window()
             logger.debug(current_window)
