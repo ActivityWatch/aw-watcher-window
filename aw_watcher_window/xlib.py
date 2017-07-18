@@ -69,7 +69,6 @@ def get_window_class(window: Window) -> str:
 
     try:
         cls = window.get_wm_class()
-        cls = cls[1]
     except Xlib.error.BadWindow:
         logging.warning("Unable to get window class, got a BadWindow exception.")
 
@@ -82,6 +81,8 @@ def get_window_class(window: Window) -> str:
             return get_window_class(window)
         else:
             return "unknown"
+
+    cls = cls[1]
     return cls
 
 
