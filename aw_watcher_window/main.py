@@ -40,6 +40,7 @@ def main():
     event_type = "currentwindow"
     client.create_bucket(bucket_id, event_type, queued=True)
     
+    
     logger.info("aw-watcher-window has started")
     with client:
         heartbeat_loop(client, bucket_id, poll_time=args.poll_time, exclude_title=args.exclude_title)
@@ -53,6 +54,7 @@ def parse_args(default_poll_time: float):
     parser.add_argument("--verbose", dest="verbose", action="store_true")
     parser.add_argument("--poll-time", dest="poll_time", type=float, default=default_poll_time)
     return parser.parse_args()
+
 
 def heartbeat_loop(client, bucket_id, poll_time, exclude_title=False):
     while True:
