@@ -1,4 +1,4 @@
-.PHONY: build
+.PHONY: build test package clean
 
 build:
 	pip3 install . --process-dependency-links
@@ -10,3 +10,6 @@ test:
 package:
 	pyinstaller aw-watcher-window.spec --clean --noconfirm
 
+clean:
+	rm -rf build dist
+	rm -rf aw_watcher_window/__pycache__
