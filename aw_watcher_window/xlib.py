@@ -6,6 +6,8 @@ import Xlib.display
 from Xlib.xobject.drawable import Window
 from Xlib import X, Xatom
 
+logger = logging.getLogger(__name__)
+
 display = Xlib.display.Display()
 screen = display.screen()
 
@@ -18,7 +20,7 @@ def _get_current_window_id() -> Optional[int]:
     window_prop = screen.root.get_full_property(atom, X.AnyPropertyType)
 
     if window_prop is None:
-        logging.warning("window_prop was None")
+        logger.warning("window_prop was None")
         return None
 
     # window_prop may contain more than one value, but it seems that it's always the first we want.
@@ -53,7 +55,7 @@ def get_window_name(window: Window) -> str:
         if type(r) == str:
             return r
         else:
-            logging.warning("I don't think this case will ever happen, but not sure so leaving this message here just in case.")
+            logger.warning("I don't think this case will ever happen, but not sure so leaving this message here just in case.")
             return r.decode('latin1')  # WM_NAME with type=STRING.
     else:
         # Fixing utf8 issue on Ubuntu (https://github.com/gurgeh/selfspy/issues/133)
@@ -61,7 +63,8 @@ def get_window_name(window: Window) -> str:
         try:
             return d.value.decode('utf8')
         except UnicodeError:
-            return d.value.encode('utf8').decode('utf8')
+            logger.warning("Failed to decode one or more characters which will be skipped, bytes are: {}".format(d.value))
+            return d.value.encode('utf8').decode('utf8', 'ignore')
 
 
 def get_window_class(window: Window) -> str:
@@ -70,12 +73,12 @@ def get_window_class(window: Window) -> str:
     try:
         cls = window.get_wm_class()
     except Xlib.error.BadWindow:
-        logging.warning("Unable to get window class, got a BadWindow exception.")
+        logger.warning("Unable to get window class, got a BadWindow exception.")
 
     # TODO: Is this needed?
     if not cls:
         print("")
-        logging.warning("Code made an unclear branch")
+        logger.warning("Code made an unclear branch")
         window = window.query_tree().parent
         if window:
             return get_window_class(window)
