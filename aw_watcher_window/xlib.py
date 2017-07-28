@@ -64,7 +64,10 @@ def get_window_name(window: Window) -> str:
             return d.value.decode('utf8')
         except UnicodeError:
             logger.warning("Failed to decode one or more characters which will be skipped, bytes are: {}".format(d.value))
-            return d.value.encode('utf8').decode('utf8', 'ignore')
+            if isinstance(d.value, bytes):
+                return d.value.decode('utf8', 'ignore')
+            else:
+                return d.value.encode('utf8').decode('utf8', 'ignore')
 
 
 def get_window_class(window: Window) -> str:
