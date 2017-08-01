@@ -48,7 +48,13 @@ def get_current_window() -> Optional[Window]:
 def get_window_name(window: Window) -> str:
     """ After some annoying debugging I resorted to pretty much copying selfspy.
         Source: https://github.com/gurgeh/selfspy/blob/8a34597f81000b3a1be12f8cde092a40604e49cf/selfspy/sniff_x.py#L165 """
-    d = window.get_full_property(NET_WM_NAME, UTF8_STRING)
+    try:
+        d = window.get_full_property(NET_WM_NAME, UTF8_STRING)
+    except Xlib.error.XError as e:
+        logger.warning("Unable to get window property NET_WM_NAME, got a {} exception from Xlib".format(type(e).__name__))
+        # I strongly suspect window.get_wm_name() will also fail and we should return "unknown" right away.
+        # But I don't know, so I pass the thing on, for now.
+        d = None
     if d is None or d.format != 8:
         # Fallback.
         r = window.get_wm_name()
@@ -79,10 +85,15 @@ def get_window_class(window: Window) -> str:
         logger.warning("Unable to get window class, got a BadWindow exception.")
 
     # TODO: Is this needed?
+    # nikanar: Indeed, it seems that it is. But it would be interesting to see how often this succeeds, and if it is low, maybe fail earlier.
     if not cls:
         print("")
         logger.warning("Code made an unclear branch")
-        window = window.query_tree().parent
+        try:
+            window = window.query_tree().parent
+        except Xlib.error.XError as e:
+            logger.warning("Unable to get window query_tree().parent, got a {} exception from Xlib".format(type(e).__name__))
+            return "unknown"
         if window:
             return get_window_class(window)
         else:
