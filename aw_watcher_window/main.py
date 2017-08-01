@@ -6,6 +6,8 @@ import os
 from time import sleep
 from datetime import datetime, timezone
 
+import Xlib
+
 from aw_core.util import assert_version
 from aw_core.models import Event
 from aw_core.log import setup_logging
@@ -65,6 +67,9 @@ def heartbeat_loop(client, bucket_id, poll_time, exclude_title=False):
         try:
             current_window = get_current_window()
             logger.debug(current_window)
+        except Xlib.error.XError as e:
+            logger.warning("Unable to get current window, got a {} exception from Xlib".format(type(e).__name__))
+            current_window = None
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
             traceback.print_exc()
