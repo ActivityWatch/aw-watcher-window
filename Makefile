@@ -1,7 +1,13 @@
 .PHONY: build test package clean
 
+pip_install_args := . --process-dependency-links
+
+ifdef DEV
+pip_install_args := --editable $(pip_install_args)
+endif
+
 build:
-	pip3 install . --process-dependency-links
+	pip3 install $(pip_install_args)
 
 test:
 	python3 -c "import aw_watcher_window"
