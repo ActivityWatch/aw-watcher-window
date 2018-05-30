@@ -38,9 +38,9 @@ def main():
 
     bucket_id = "{}_{}".format(client.client_name, client.client_hostname)
     event_type = "currentwindow"
+
     client.create_bucket(bucket_id, event_type, queued=True)
-    
-    
+
     logger.info("aw-watcher-window has started")
     with client:
         heartbeat_loop(client, bucket_id, poll_time=args.poll_time, exclude_title=args.exclude_title)

@@ -4,3 +4,4 @@ __pycache__
 build
 dist
 *.swp
+.mypy_cache
