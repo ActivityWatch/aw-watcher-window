@@ -12,6 +12,11 @@ matrix:
      osx_image: xcode7.3
      env: PYENV_VERSION='3.5.4'
 
+   - os: osx
+     language: generic
+     osx_image: xcode7.3
+     env: PYENV_VERSION='3.6.5'
+
   allow_failures:
    # Doesn't currently work with pyinstaller
    - python: nightly
