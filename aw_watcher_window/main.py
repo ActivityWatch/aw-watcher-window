@@ -42,7 +42,7 @@ def main():
     logger.info("aw-watcher-window started")
     sleep(1)  # wait for server to start
     with client:
-        heartbeat_loop(client, bucket_id, poll_time=args.poll_time, exclude_title=args.exclude_title)
+        heartbeat_loop(client, bucket_id, poll_time=args.poll_time, exclude_title=args.exclude_title or config.getboolean("exclude_title"))
 
 
 def parse_args(default_poll_time: float):
