@@ -56,7 +56,6 @@ def parse_args(default_poll_time: float, default_exclude_title: bool):
 
 
 def heartbeat_loop(client, bucket_id, poll_time, exclude_title=False):
-    print(exclude_title)
     while True:
         if os.getppid() == 1:
             logger.info("window-watcher stopped because parent process died")
