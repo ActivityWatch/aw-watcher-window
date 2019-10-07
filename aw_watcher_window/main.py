@@ -27,7 +27,7 @@ def main():
 
     # Read settings from config
     config = load_config()
-    args = parse_args(default_poll_time=config.getfloat("poll_time"))
+    args = parse_args(default_poll_time=config.getfloat("poll_time"), default_exclude_title=config.getboolean("exclude_title"))
 
     setup_logging(name="aw-watcher-window", testing=args.testing, verbose=args.verbose,
                   log_stderr=True, log_file=True)
@@ -42,20 +42,21 @@ def main():
     logger.info("aw-watcher-window started")
     sleep(1)  # wait for server to start
     with client:
-        heartbeat_loop(client, bucket_id, poll_time=args.poll_time, exclude_title=args.exclude_title or config.getboolean("exclude_title"))
+        heartbeat_loop(client, bucket_id, poll_time=args.poll_time, exclude_title=args.exclude_title)
 
 
-def parse_args(default_poll_time: float):
+def parse_args(default_poll_time: float, default_exclude_title: bool):
     """config contains defaults loaded from the config file"""
     parser = argparse.ArgumentParser("A cross platform window watcher for Activitywatch.\nSupported on: Linux (X11), macOS and Windows.")
     parser.add_argument("--testing", dest="testing", action="store_true")
-    parser.add_argument("--exclude-title", dest="exclude_title", action="store_true")
+    parser.add_argument("--exclude-title", dest="exclude_title", action="store_true", default=default_exclude_title)
     parser.add_argument("--verbose", dest="verbose", action="store_true")
     parser.add_argument("--poll-time", dest="poll_time", type=float, default=default_poll_time)
     return parser.parse_args()
 
 
 def heartbeat_loop(client, bucket_id, poll_time, exclude_title=False):
+    print(exclude_title)
     while True:
         if os.getppid() == 1:
             logger.info("window-watcher stopped because parent process died")
