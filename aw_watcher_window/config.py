@@ -6,11 +6,11 @@ from aw_core.config import load_config as _load_config
 def load_config():
     default_client_config = ConfigParser()
     default_client_config["aw-watcher-window"] = {
-        "exclude_title": True,
+        "exclude_title": False,
         "poll_time": "1.0"
     }
     default_client_config["aw-watcher-window-testing"] = {
-        "exclude_title": True,
+        "exclude_title": False,
         "poll_time": "1.0"
     }
 
