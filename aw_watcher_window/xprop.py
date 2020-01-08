@@ -1,8 +1,9 @@
 import sys
 import subprocess
-from subprocess import PIPE
 import re
 import logging
+from subprocess import PIPE
+from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ def get_xprop_field_str(fieldname, xprop_output) -> str:
     return field
 
 
-def get_xprop_field_strlist(fieldname, xprop_output) -> str:
+def get_xprop_field_strlist(fieldname, xprop_output) -> List[str]:
     return [s.strip('"') for s in get_xprop_field(fieldname, xprop_output)]
 
 
@@ -88,14 +89,14 @@ def get_xprop_field_int(fieldname, xprop_output) -> int:
     return field
 
 
-def get_xprop_field_class(xprop_output) -> str:
-    classname = None
+def get_xprop_field_class(xprop_output) -> List[str]:
+    classname: List[str] = []
     try:
         classname = [c.strip('", ') for c in get_xprop_field("WM_CLASS", xprop_output)[0].split(',')]
     except IndexError:
         pass
     if not classname:
-        classname = "unknown"
+        classname = ["unknown"]
     return classname
 
 
