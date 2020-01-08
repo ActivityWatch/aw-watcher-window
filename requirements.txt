@@ -1,6 +1,0 @@
-git+https://github.com/ActivityWatch/aw-core.git@master#egg=aw-core
-git+https://github.com/ActivityWatch/aw-client.git@master#egg=aw-client
-
-wmi; sys_platform == 'win32'
-pypiwin32; sys_platform == 'win32'
-python-xlib; sys_platform == 'linux'
