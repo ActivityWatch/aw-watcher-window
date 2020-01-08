@@ -2,37 +2,26 @@ language: python
 matrix:
   include:
    - os: linux
-     python: 3.5
-
-   - os: linux
-     python: nightly
-
+     python: 3.6
    - os: osx
      language: generic
      osx_image: xcode7.3
-     env: PYENV_VERSION='3.5.4'
-
-   - os: osx
-     language: generic
-     osx_image: xcode7.3
-     env: PYENV_VERSION='3.6.5'
-
-  allow_failures:
-   # Doesn't currently work with pyinstaller
-   - python: nightly
-
+     env:
+      - PYENV_VERSION='3.6.5'
+      - PYTHON_CONFIGURE_OPTS="--enable-framework"
 
 before_install:
-  - |
-      if [[ -n "$PYENV_VERSION" ]]; then
-        wget https://github.com/praekeltfoundation/travis-pyenv/releases/download/0.4.0/setup-pyenv.sh
-        source setup-pyenv.sh
-      fi
+ - |
+     if [[ -n "$PYENV_VERSION" ]]; then
+       wget https://github.com/praekeltfoundation/travis-pyenv/releases/download/0.4.0/setup-pyenv.sh
+       source setup-pyenv.sh
+     fi
  - python3 --version
- - pip3 install pytest mypy pyinstaller
+ - pip3 install poetry
 
 
 install:
+ - "poetry install --no-root"
  - "make build"
 
 script:
