@@ -10,7 +10,7 @@ build:
 	$(install_cmd)
 
 test:
-	python3 -c "import aw_watcher_window"
+	aw-watcher-window --help
 	python3 -m mypy aw_watcher_window/ --ignore-missing-imports
 
 package:

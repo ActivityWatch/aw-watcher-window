@@ -6,7 +6,6 @@ import os
 from time import sleep
 from datetime import datetime, timezone
 
-from aw_core.util import assert_version
 from aw_core.models import Event
 from aw_core.log import setup_logging
 from aw_client import ActivityWatchClient
@@ -18,16 +17,15 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    # Verify python version is >=3.5
-    #   req_version is 3.5 due to usage of subprocess.run
-    assert_version((3, 5))
+    # Read settings from config
+    config = load_config()
+    args = parse_args(
+        default_poll_time=config.getfloat("poll_time"),
+        default_exclude_title=config.getboolean("exclude_title"),
+    )
 
     if sys.platform.startswith("linux") and ("DISPLAY" not in os.environ or not os.environ["DISPLAY"]):
         raise Exception("DISPLAY environment variable not set")
-
-    # Read settings from config
-    config = load_config()
-    args = parse_args(default_poll_time=config.getfloat("poll_time"), default_exclude_title=config.getboolean("exclude_title"))
 
     setup_logging(name="aw-watcher-window", testing=args.testing, verbose=args.verbose,
                   log_stderr=True, log_file=True)
