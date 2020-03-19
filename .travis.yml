@@ -17,8 +17,7 @@ before_install:
        source setup-pyenv.sh
      fi
  - python3 --version
- - pip3 install poetry
-
+ - pip3 install poetry pyinstaller
 
 install:
  - "poetry install --no-root"
