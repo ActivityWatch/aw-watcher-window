@@ -5,7 +5,7 @@ build:
 
 test:
 	aw-watcher-window --help
-	python3 -m mypy aw_watcher_window/ --ignore-missing-imports
+	python -m mypy aw_watcher_window/ --ignore-missing-imports
 
 package:
 	pyinstaller aw-watcher-window.spec --clean --noconfirm
