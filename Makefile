@@ -1,13 +1,7 @@
 .PHONY: build test package clean
 
-ifdef DEV
-pip_install_args := poetry install
-else
-install_cmd := pip3 install .
-endif
-
 build:
-	$(install_cmd)
+	poetry install
 
 test:
 	aw-watcher-window --help
