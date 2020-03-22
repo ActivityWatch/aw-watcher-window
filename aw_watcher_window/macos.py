@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Dict, Optional
 from AppKit import NSWorkspace
 from Quartz import (
     CGWindowListCopyWindowInfo,
@@ -6,23 +6,25 @@ from Quartz import (
     kCGNullWindowID
 )
 
-def getInfo() -> Optional[dict]:
-    app_name = ''
-    title = ''
-
-    app = NSWorkspace.sharedWorkspace().activeApplication()
-
+def getInfo() -> Optional[Dict[str, str]]:
+    app = NSWorkspace.sharedWorkspace().frontmostApplication()
     if app:
-        pid = app['NSApplicationProcessIdentifier']
+        app_name = app.localizedName()
+        title = getTitle(app.processIdentifier())
 
-        options = kCGWindowListOptionOnScreenOnly
-        window_list = CGWindowListCopyWindowInfo(options, kCGNullWindowID)
-        for window in window_list:
-            if pid == window['kCGWindowOwnerPID']:
-                # We could use app['NSApplicationName'], but this value is more
-                # accurate and matches other methods (like applescript)
-                app_name = window['kCGWindowOwnerName']
-                title = window.get('kCGWindowName', u'')
-                break
+        print("appname: " + app_name + ", title: "+ title)
+        return {"appname": app_name, "title": title}
 
-    return {"appname": app_name, "title": title}
+    else:
+        return None
+
+def getTitle(pid: int) -> str:
+    options = kCGWindowListOptionOnScreenOnly
+    windowList = CGWindowListCopyWindowInfo(options, kCGNullWindowID)
+
+    for window in windowList:
+        lookupPid = window['kCGWindowOwnerPID']
+        if (pid == lookupPid):
+            return str(window.get('kCGWindowName', 'Non-detected window title'))
+    return ""
+
