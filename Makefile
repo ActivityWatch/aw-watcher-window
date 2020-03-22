@@ -1,17 +1,11 @@
 .PHONY: build test package clean
 
-pip_install_args := . --upgrade --process-dependency-links # -r requirements.txt
-
-ifdef DEV
-pip_install_args := --editable $(pip_install_args)
-endif
-
 build:
-	pip3 install $(pip_install_args)
+	poetry install
 
 test:
-	python3 -c "import aw_watcher_window"
-	python3 -m mypy -m aw_watcher_window --ignore-missing-imports
+	aw-watcher-window --help
+	python -m mypy aw_watcher_window/ --ignore-missing-imports
 
 package:
 	pyinstaller aw-watcher-window.spec --clean --noconfirm

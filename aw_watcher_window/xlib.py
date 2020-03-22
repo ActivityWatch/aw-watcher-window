@@ -113,6 +113,7 @@ def get_window_pid(window: Window) -> str:
         # TODO: Needed?
         raise Exception("pid_property was None")
 
+
 if __name__ == "__main__":
     from time import sleep
 

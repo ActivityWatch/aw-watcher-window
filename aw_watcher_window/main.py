@@ -6,7 +6,6 @@ import os
 from time import sleep
 from datetime import datetime, timezone
 
-from aw_core.util import assert_version
 from aw_core.models import Event
 from aw_core.log import setup_logging
 from aw_client import ActivityWatchClient
@@ -18,39 +17,37 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    # Verify python version is >=3.5
-    #   req_version is 3.5 due to usage of subprocess.run
-    assert_version((3, 5))
+    # Read settings from config
+    config = load_config()
+    args = parse_args(
+        default_poll_time=config.getfloat("poll_time"),
+        default_exclude_title=config.getboolean("exclude_title"),
+    )
 
     if sys.platform.startswith("linux") and ("DISPLAY" not in os.environ or not os.environ["DISPLAY"]):
         raise Exception("DISPLAY environment variable not set")
 
-    # Read settings from config
-    config = load_config()
-    args = parse_args(default_poll_time=config.getfloat("poll_time"))
-
     setup_logging(name="aw-watcher-window", testing=args.testing, verbose=args.verbose,
                   log_stderr=True, log_file=True)
-
-    logger.info("Running watcher with poll time {} seconds".format(args.poll_time))
 
     client = ActivityWatchClient("aw-watcher-window", testing=args.testing)
 
     bucket_id = "{}_{}".format(client.client_name, client.client_hostname)
     event_type = "currentwindow"
+
     client.create_bucket(bucket_id, event_type, queued=True)
-    
-    
-    logger.info("aw-watcher-window has started")
+
+    logger.info("aw-watcher-window started")
+    sleep(1)  # wait for server to start
     with client:
         heartbeat_loop(client, bucket_id, poll_time=args.poll_time, exclude_title=args.exclude_title)
 
 
-def parse_args(default_poll_time: float):
+def parse_args(default_poll_time: float, default_exclude_title: bool):
     """config contains defaults loaded from the config file"""
     parser = argparse.ArgumentParser("A cross platform window watcher for Activitywatch.\nSupported on: Linux (X11), macOS and Windows.")
     parser.add_argument("--testing", dest="testing", action="store_true")
-    parser.add_argument("--exclude-title", dest="exclude_title", action="store_true")
+    parser.add_argument("--exclude-title", dest="exclude_title", action="store_true", default=default_exclude_title)
     parser.add_argument("--verbose", dest="verbose", action="store_true")
     parser.add_argument("--poll-time", dest="poll_time", type=float, default=default_poll_time)
     return parser.parse_args()
