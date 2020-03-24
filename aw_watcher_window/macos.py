@@ -1,30 +1,27 @@
 from typing import Dict, Optional
-from AppKit import NSWorkspace
+from AppKit import NSWorkspace, NSRunningApplication
 from Quartz import (
     CGWindowListCopyWindowInfo,
     kCGWindowListOptionOnScreenOnly,
     kCGNullWindowID
 )
 
-def getInfo() -> Optional[Dict[str, str]]:
-    app = NSWorkspace.sharedWorkspace().frontmostApplication()
-    if app:
-        app_name = app.localizedName()
-        title = getTitle(app.processIdentifier())
+def get_current_app() -> Optional[NSRunningApplication]:
+    return NSWorkspace.sharedWorkspace().frontmostApplication()
 
-        print("appname: " + app_name + ", title: "+ title)
-        return {"appname": app_name, "title": title}
 
-    else:
-        return None
+def get_app_name(app: NSRunningApplication) -> str:
+    return app.localizedName()
 
-def getTitle(pid: int) -> str:
+
+def get_app_title(app: NSRunningApplication) -> str:
+    pid = app.processIdentifier()
     options = kCGWindowListOptionOnScreenOnly
     windowList = CGWindowListCopyWindowInfo(options, kCGNullWindowID)
 
     for window in windowList:
         lookupPid = window['kCGWindowOwnerPID']
-        if (pid == lookupPid):
-            return str(window.get('kCGWindowName', 'Non-detected window title'))
+        if (lookupPid == pid):
+            return window.get('kCGWindowName', 'Non-detected window title')
     return ""
 

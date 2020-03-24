@@ -18,7 +18,10 @@ def get_current_window_linux() -> Optional[dict]:
 
 def get_current_window_macos() -> Optional[dict]:
     from . import macos
-    return macos.getInfo()
+
+    app = macos.get_current_app()
+    print ("appname" + macos.get_app_name(app) + ", title" + macos.get_app_title(app))
+    return {"appname": macos.get_app_name(app), "title": macos.get_app_title(app)}
 
 
 def get_current_window_windows() -> Optional[dict]:
