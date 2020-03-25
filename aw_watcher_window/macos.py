@@ -1,5 +1,6 @@
-from typing import Dict, Optional
-from AppKit import NSObject, NSWorkspace, NSRunningApplication, NSWorkspaceDidActivateApplicationNotification
+from threading import Thread
+from typing import Dict, Optional, NoReturn
+from AppKit import NSObject, NSNotification, NSWorkspace, NSRunningApplication, NSWorkspaceDidActivateApplicationNotification
 from Quartz import (
     CGWindowListCopyWindowInfo,
     kCGWindowListOptionOnScreenOnly,
@@ -13,16 +14,18 @@ class Observer(NSObject):
 
     def get_front_app(self) -> NSRunningApplication:
         return self.app
-    def set_front_app_(self) -> NSRunningApplication:
+
+    def handle_(self, noti: NSNotification) -> None:
+        self._set_front_app()
+    def _set_front_app(self) -> None:
         self.app = NSWorkspace.sharedWorkspace().frontmostApplication()
 
 observer = Observer.new()
 NSWorkspace.sharedWorkspace().notificationCenter().addObserver_selector_name_object_(
-        observer,
-        "set_front_app:",
-        NSWorkspaceDidActivateApplicationNotification,
-        None)
-
+    observer,
+    "handle:",
+    NSWorkspaceDidActivateApplicationNotification,
+    None)
 AppHelper.runConsoleEventLoop()
 
 def get_current_app() -> NSRunningApplication:
@@ -41,7 +44,6 @@ def get_app_title(app: NSRunningApplication) -> str:
     for window in windowList:
         lookupPid = window['kCGWindowOwnerPID']
         if (lookupPid == pid):
-            print(window)
             return window.get('kCGWindowName', 'Non-detected window title')
 
     return "Couldn't find title by pid"
