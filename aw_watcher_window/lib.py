@@ -1,8 +1,8 @@
 import sys
-from typing import Optional
+from typing import Callable, Dict, Optional
 
 
-def get_current_window_linux() -> Optional[dict]:
+def get_current_window_linux() -> Dict[str, str]:
     from . import xlib
     window = xlib.get_current_window()
 
@@ -16,15 +16,15 @@ def get_current_window_linux() -> Optional[dict]:
     return {"appname": cls, "title": name}
 
 
-def get_current_window_macos() -> Optional[dict]:
+def initialize_get_macos_window() -> Callable[[], Dict[str, str]]:
     from . import macos
-    # The side effectful import breaks thigns here
-    app = macos.get_current_app()
-    print ("appname" + macos.get_app_name(app) + ", title" + macos.get_app_title(app))
-    return {"appname": macos.get_app_name(app), "title": macos.get_app_title(app)}
+    def get_current_window_macos() -> Dict[str, str]:
+        app = macos.get_current_app()
+        print ("appname" + macos.get_app_name(app) + ", title" + macos.get_app_title(app))
+        return {"appname": macos.get_app_name(app), "title": macos.get_app_title(app)}
+    return get_current_window_macos
 
-
-def get_current_window_windows() -> Optional[dict]:
+def get_current_window_windows() -> Dict[str, str]:
     from . import windows
     window_handle = windows.get_active_window_handle()
     app = windows.get_app_name(window_handle)
@@ -38,12 +38,12 @@ def get_current_window_windows() -> Optional[dict]:
     return {"appname": app, "title": title}
 
 
-def get_current_window() -> Optional[dict]:
+def get_current_window() -> Optional[Callable[[], Dict[str, str]]]:
     if sys.platform.startswith("linux"):
-        return get_current_window_linux()
+        return get_current_window_linux
     elif sys.platform == "darwin":
-        return get_current_window_macos()
+        return initialize_get_macos_window()
     elif sys.platform in ["win32", "cygwin"]:
-        return get_current_window_windows()
+        return get_current_window_windows
     else:
         raise Exception("Unknown platform: {}".format(sys.platform))

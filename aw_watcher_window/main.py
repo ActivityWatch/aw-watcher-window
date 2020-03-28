@@ -54,13 +54,14 @@ def parse_args(default_poll_time: float, default_exclude_title: bool):
 
 
 def heartbeat_loop(client, bucket_id, poll_time, exclude_title=False):
+    current_window_fn = get_current_window()
     while True:
         if os.getppid() == 1:
             logger.info("window-watcher stopped because parent process died")
             break
 
         try:
-            current_window = get_current_window()
+            current_window = current_window_fn()
             logger.debug(current_window)
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
