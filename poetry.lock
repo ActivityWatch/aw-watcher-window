@@ -55,6 +55,7 @@ requests = "^2.22.0"
 reference = "9e4cdb563ef09c0f4983da6ef0b43bfda675a29b"
 type = "git"
 url = "https://github.com/ActivityWatch/aw-client.git"
+
 [[package]]
 category = "main"
 description = ""
@@ -79,6 +80,7 @@ mongo = ["pymongo (^3.10.0)"]
 reference = "a62a299868b90656d8f9237beb30a457f8c23be2"
 type = "git"
 url = "https://github.com/ActivityWatch/aw-core.git"
+
 [[package]]
 category = "main"
 description = "Python package for providing Mozilla's CA Bundle."
@@ -256,6 +258,63 @@ name = "py"
 optional = false
 python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 version = "1.8.1"
+
+[[package]]
+category = "main"
+description = "Python<->ObjC Interoperability Module"
+name = "pyobjc-core"
+optional = false
+python-versions = ">=3.6"
+version = "6.2"
+
+[[package]]
+category = "main"
+description = "Wrappers for the framework ApplicationServices on macOS"
+name = "pyobjc-framework-applicationservices"
+optional = false
+python-versions = ">=3.6"
+version = "6.2"
+
+[package.dependencies]
+pyobjc-core = ">=6.2"
+pyobjc-framework-Cocoa = ">=6.2"
+pyobjc-framework-Quartz = ">=6.2"
+
+[[package]]
+category = "main"
+description = "Wrappers for the Cocoa frameworks on macOS"
+name = "pyobjc-framework-cocoa"
+optional = false
+python-versions = ">=3.6"
+version = "6.2"
+
+[package.dependencies]
+pyobjc-core = ">=6.2"
+
+[[package]]
+category = "main"
+description = "Wrappers for the framework CoreText on macOS"
+name = "pyobjc-framework-coretext"
+optional = false
+python-versions = ">=3.6"
+version = "6.2"
+
+[package.dependencies]
+pyobjc-core = ">=6.2"
+pyobjc-framework-Cocoa = ">=6.2"
+pyobjc-framework-Quartz = ">=6.2"
+
+[[package]]
+category = "main"
+description = "Wrappers for the Quartz frameworks on macOS"
+name = "pyobjc-framework-quartz"
+optional = false
+python-versions = ">=3.6"
+version = "6.2"
+
+[package.dependencies]
+pyobjc-core = ">=6.2"
+pyobjc-framework-Cocoa = ">=6.2"
 
 [[package]]
 category = "dev"
@@ -445,7 +504,7 @@ docs = ["sphinx", "jaraco.packaging (>=3.2)", "rst.linker (>=1.9)"]
 testing = ["jaraco.itertools", "func-timeout"]
 
 [metadata]
-content-hash = "b7591d990c22b04bfd709e63c8070f461b47a5ae3eaeffa25486a0f818e2697a"
+content-hash = "a24e001895323bdb5ab65e014f7cb9cc2fe38a084d7f41261b990aab60fa5ada"
 python-versions = "^3.6"
 
 [metadata.files]
@@ -542,6 +601,35 @@ pluggy = [
 py = [
     {file = "py-1.8.1-py2.py3-none-any.whl", hash = "sha256:c20fdd83a5dbc0af9efd622bee9a5564e278f6380fffcacc43ba6f43db2813b0"},
     {file = "py-1.8.1.tar.gz", hash = "sha256:5e27081401262157467ad6e7f851b7aa402c5852dbcb3dae06768434de5752aa"},
+]
+pyobjc-core = [
+    {file = "pyobjc-core-6.2.tar.gz", hash = "sha256:843b175e6bd6309c4457090ca52ca8e20cb1e6be19df1bc74d1ed1889f52149c"},
+    {file = "pyobjc_core-6.2-cp36-cp36m-macosx_10_9_x86_64.whl", hash = "sha256:cb130c953c79cb2df4eb3976b7fe28c336b0de0dc550b0574eca8856c76cd147"},
+    {file = "pyobjc_core-6.2-cp37-cp37m-macosx_10_9_x86_64.whl", hash = "sha256:ccfad6cba29652b005bc41e819ad70d203cc3e57a16e75e27bc4e6979034c7c0"},
+    {file = "pyobjc_core-6.2-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:6af32dc491c575346400c29649fffe6e0a1911553b9218529deafc56fa357bdd"},
+    {file = "pyobjc_core-6.2-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:8dd816c03fcbcbd8da8beb30dffe3aaaf8077d852cca4d636e3d7dd0ab48d39d"},
+]
+pyobjc-framework-applicationservices = [
+    {file = "pyobjc-framework-ApplicationServices-6.2.tar.gz", hash = "sha256:f234905b687ebdf9c1eeae1a6e00ad7f97c1735b3c16b4a12e782cb6e334b2fc"},
+    {file = "pyobjc_framework_ApplicationServices-6.2-py2.py3-none-any.whl", hash = "sha256:0558740898dc63e35a5d85570d5837307158a675366a7fef7bd756056d70287e"},
+]
+pyobjc-framework-cocoa = [
+    {file = "pyobjc-framework-Cocoa-6.2.tar.gz", hash = "sha256:e15bbf82bfe3a14dfd29c7465cc5d8edab16d546410239b7e1a4db62ded4a5b2"},
+    {file = "pyobjc_framework_Cocoa-6.2-cp36-cp36m-macosx_10_9_x86_64.whl", hash = "sha256:04b994a26bc30c912f2f5165d57a987f35889a36dd9c104674bc449c53649629"},
+    {file = "pyobjc_framework_Cocoa-6.2-cp37-cp37m-macosx_10_9_x86_64.whl", hash = "sha256:09612dd81fafb6e1a8eb597b5e523c9de103a50af79e95afbf13b8a5937e3cfa"},
+    {file = "pyobjc_framework_Cocoa-6.2-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:cbe4f1917aa5def4a77fd4199a9697f3b4224acf59acf4e01fe9a7c73d49b08c"},
+    {file = "pyobjc_framework_Cocoa-6.2-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:ef3c21a8b37519e3a3880fc0c5539fe27afd3e0235c8ebc9c87b3d0354cbb4ea"},
+]
+pyobjc-framework-coretext = [
+    {file = "pyobjc-framework-CoreText-6.2.tar.gz", hash = "sha256:a65723e7c08b1eebbeb1ed97cec070943bcef1df4caa2f9edeeeeff50f534559"},
+    {file = "pyobjc_framework_CoreText-6.2-cp36-abi3-macosx_10_9_x86_64.whl", hash = "sha256:e3484efc65deac453d0ff6f9070b2a5a928b351be8b0ffbd9b214eda9d93dc87"},
+]
+pyobjc-framework-quartz = [
+    {file = "pyobjc-framework-Quartz-6.2.tar.gz", hash = "sha256:5133eef934143ed68014d73f7b3b8113441b3631d7a2c17f66839ea4b426c518"},
+    {file = "pyobjc_framework_Quartz-6.2-cp36-cp36m-macosx_10_9_x86_64.whl", hash = "sha256:5250961ce781d6f9ee65486cd206cf6a7814b27e9e3eef1a73032cfb69ec4e5f"},
+    {file = "pyobjc_framework_Quartz-6.2-cp37-cp37m-macosx_10_9_x86_64.whl", hash = "sha256:2b64baf09bde8864f5d858b51a28b724ea908638f30b50d5b3f1f82f0dc4835e"},
+    {file = "pyobjc_framework_Quartz-6.2-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:08ebaa3a9f4cf5a4de89e0df50d5bd535706900471f14ac42a3f4af1a7398ebb"},
+    {file = "pyobjc_framework_Quartz-6.2-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:906fb0d35e63057157816409b4eb0503ef1fa8e1a0a7176b637905076434379c"},
 ]
 pyparsing = [
     {file = "pyparsing-2.4.6-py2.py3-none-any.whl", hash = "sha256:c342dccb5250c08d45fd6f8b4a559613ca603b57498511740e65cd11a2e7dcec"},
