@@ -38,6 +38,10 @@ def main():
     client.create_bucket(bucket_id, event_type, queued=True)
 
     logger.info("aw-watcher-window started")
+    if sys.platform == "darwin":
+        from . import macos
+        macos.background_ensure_permissions()
+
     sleep(1)  # wait for server to start
     with client:
         heartbeat_loop(client, bucket_id, poll_time=args.poll_time, exclude_title=args.exclude_title)
