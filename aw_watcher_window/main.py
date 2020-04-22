@@ -27,6 +27,10 @@ def main():
     if sys.platform.startswith("linux") and ("DISPLAY" not in os.environ or not os.environ["DISPLAY"]):
         raise Exception("DISPLAY environment variable not set")
 
+    if sys.platform == "darwin":
+        from . import macos
+        macos.background_ensure_permissions()
+
     setup_logging(name="aw-watcher-window", testing=args.testing, verbose=args.verbose,
                   log_stderr=True, log_file=True)
 
@@ -38,9 +42,6 @@ def main():
     client.create_bucket(bucket_id, event_type, queued=True)
 
     logger.info("aw-watcher-window started")
-    if sys.platform == "darwin":
-        from . import macos
-        macos.background_ensure_permissions()
 
     sleep(1)  # wait for server to start
     with client:

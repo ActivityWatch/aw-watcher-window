@@ -18,11 +18,14 @@ def getTitle(info: str) -> str:
 
 
 def background_ensure_permissions() -> None:
-    import threading
+    from multiprocessing import Process
+    # TODO: remove print before merging
     print("Starting permission check thread")
-    permission_thread = threading.Thread(target=ensure_permissions, args=([]))
-    permission_thread.start()
+    permission_process = Process(target=ensure_permissions, args=([]))
+    permission_process.start()
+    permission_process.join()
     return
+
 
 def ensure_permissions() -> None:
     from ApplicationServices import AXIsProcessTrusted
@@ -37,12 +40,9 @@ def ensure_permissions() -> None:
         alert.setMessageText_(title)
         alert.setInformativeText_(info)
 
-        ok_button = alert.addButtonWithTitle_("Ok")
+        ok_button = alert.addButtonWithTitle_("Open accessibility settings")
 
-        accessibility_button = alert.addButtonWithTitle_("Turn on accessibility")
-        accessibility_button.setTitle_("Open accessibility settings")
-        accessibility_button.setAction_("")
-
+        # Is cancel a good name here since the user isn't really cancelling anything?
         alert.addButtonWithTitle_("Cancel")
         choice = alert.runModal()
         print(choice)
