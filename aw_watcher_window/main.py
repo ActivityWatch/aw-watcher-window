@@ -27,12 +27,12 @@ def main():
     if sys.platform.startswith("linux") and ("DISPLAY" not in os.environ or not os.environ["DISPLAY"]):
         raise Exception("DISPLAY environment variable not set")
 
+    setup_logging(name="aw-watcher-window", testing=args.testing, verbose=args.verbose,
+                  log_stderr=True, log_file=True)
+
     if sys.platform == "darwin":
         from . import macos
         macos.background_ensure_permissions()
-
-    setup_logging(name="aw-watcher-window", testing=args.testing, verbose=args.verbose,
-                  log_stderr=True, log_file=True)
 
     client = ActivityWatchClient("aw-watcher-window", testing=args.testing)
 

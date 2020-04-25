@@ -21,7 +21,6 @@ def background_ensure_permissions() -> None:
     from multiprocessing import Process
     permission_process = Process(target=ensure_permissions, args=(()))
     permission_process.start()
-    permission_process.join()
     return
 
 
