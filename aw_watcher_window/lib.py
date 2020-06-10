@@ -1,6 +1,9 @@
 import sys
 import json
+import logging
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class Linux:
@@ -9,6 +12,7 @@ class Linux:
             import pydbus
             self.bus = pydbus.SessionBus()
         except ModuleNotFoundError:
+            logger.info("pydbus not installed, GNOME-Shell Wayland support disabled")
             self.bus = False
             self.gnome_shell = None
         
