@@ -1,19 +1,65 @@
 import sys
+import json
 from typing import Optional
 
 
-def get_current_window_linux() -> Optional[dict]:
-    from . import xlib
-    window = xlib.get_current_window()
+class Linux:
+    def __init__(self):
+        try:
+            import pydbus
+            self.bus = pydbus.SessionBus()
+        except ModuleNotFoundError:
+            self.bus = False
+            self.gnome_shell = None
+        
+        if self.bus:
+            import gi.repository.GLib
+            try:
+                self.gnome_shell = self.bus.get("org.gnome.Shell")
+            except gi.repository.GLib.Error:
+                self.gnome_shell = None
 
-    if window is None:
-        cls = "unknown"
-        name = "unknown"
-    else:
-        cls = xlib.get_window_class(window)
-        name = xlib.get_window_name(window)
+    def get_current_window(self) -> dict:
+        if self.gnome_shell:
+            return self.get_current_window_gnome_shell()
+        
+        return self.get_current_window_x11()
 
-    return {"appname": cls, "title": name}
+    def get_current_window_gnome_shell(self) -> dict:
+        """get current app from GNOME Shell via dbus"""
+        js_code = """
+        var window_list = global.get_window_actors();
+        var active_window_actor = window_list.find(window => window.meta_window.has_focus());
+        var active_window = active_window_actor.get_meta_window()
+        var vm_class = active_window.get_wm_class();
+        var title = active_window.get_title()
+        var result = {"title": title, "appname": vm_class};
+        result
+        """
+
+        ok, result = self.gnome_shell.Eval(js_code)
+        if ok:
+            result_data = json.loads(result)
+            return result_data
+        
+        return {"appname": "unknown", "title": "unknown"}
+
+    def get_current_window_x11(self) -> dict:
+        from . import xlib
+        window = xlib.get_current_window()
+
+        if window is None:
+            cls = "unknown"
+            name = "unknown"
+        else:
+            cls = xlib.get_window_class(window)
+            name = xlib.get_window_name(window)
+
+        return {"appname": cls, "title": name}
+
+
+if sys.platform.startswith("linux"):
+    linux = Linux()
 
 
 def get_current_window_macos() -> Optional[dict]:
@@ -41,7 +87,7 @@ def get_current_window_windows() -> Optional[dict]:
 
 def get_current_window() -> Optional[dict]:
     if sys.platform.startswith("linux"):
-        return get_current_window_linux()
+        return linux.get_current_window()
     elif sys.platform == "darwin":
         return get_current_window_macos()
     elif sys.platform in ["win32", "cygwin"]:
