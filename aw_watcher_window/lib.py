@@ -16,6 +16,7 @@ class Linux:
             import gi.repository.GLib
             try:
                 self.gnome_shell = self.bus.get("org.gnome.Shell")
+                self._setup_gnome()
             except gi.repository.GLib.Error:
                 self.gnome_shell = None
 
@@ -24,20 +25,27 @@ class Linux:
             return self.get_current_window_gnome_shell()
         
         return self.get_current_window_x11()
+    
+    def _setup_gnome(self) -> None:
+        js_code = """
+        global._aw_current_window = () => {
+            var window_list = global.get_window_actors();
+            var active_window_actor = window_list.find(window => window.meta_window.has_focus());
+            var active_window = active_window_actor.get_meta_window()
+            var vm_class = active_window.get_wm_class();
+            var title = active_window.get_title()
+            var result = {"title": title, "appname": vm_class};
+            return result    
+        }
+        """
+        ok, result = self.gnome_shell.Eval(js_code)
+        if not ok:
+            raise Error("failed seting up gnome-shell function: " + result)
 
     def get_current_window_gnome_shell(self) -> dict:
         """get current app from GNOME Shell via dbus"""
-        js_code = """
-        var window_list = global.get_window_actors();
-        var active_window_actor = window_list.find(window => window.meta_window.has_focus());
-        var active_window = active_window_actor.get_meta_window()
-        var vm_class = active_window.get_wm_class();
-        var title = active_window.get_title()
-        var result = {"title": title, "appname": vm_class};
-        result
-        """
 
-        ok, result = self.gnome_shell.Eval(js_code)
+        ok, result = self.gnome_shell.Eval("global._aw_current_window()")
         if ok:
             result_data = json.loads(result)
             return result_data
