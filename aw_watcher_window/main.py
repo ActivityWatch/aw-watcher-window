@@ -30,6 +30,10 @@ def main():
     setup_logging(name="aw-watcher-window", testing=args.testing, verbose=args.verbose,
                   log_stderr=True, log_file=True)
 
+    if sys.platform == "darwin":
+        from . import macos
+        macos.background_ensure_permissions()
+
     client = ActivityWatchClient("aw-watcher-window", testing=args.testing)
 
     bucket_id = "{}_{}".format(client.client_name, client.client_hostname)
@@ -38,6 +42,7 @@ def main():
     client.create_bucket(bucket_id, event_type, queued=True)
 
     logger.info("aw-watcher-window started")
+
     sleep(1)  # wait for server to start
     with client:
         heartbeat_loop(client, bucket_id, poll_time=args.poll_time, exclude_title=args.exclude_title)
