@@ -1,5 +1,5 @@
 import sys
-from typing import Callable, Dict, Optional
+from typing import Callable, Dict, Optional, Any
 
 
 def get_current_window_linux() -> Dict[str, str]:
@@ -16,13 +16,11 @@ def get_current_window_linux() -> Dict[str, str]:
     return {"appname": cls, "title": name}
 
 
-def initialize_get_macos_window() -> Callable[[], Dict[str, str]]:
+def get_current_window_macos() -> Dict[str, str]:
     from . import macos
-    def get_current_window_macos() -> Dict[str, str]:
-        app = macos.get_current_app()
-        print ("appname" + macos.get_app_name(app) + ", title" + macos.get_app_title(app))
-        return {"appname": macos.get_app_name(app), "title": macos.get_app_title(app)}
-    return get_current_window_macos
+    # TODO: This should return the latest event, or block until there is one
+    return macos.get_window_event()
+
 
 def get_current_window_windows() -> Dict[str, str]:
     from . import windows
@@ -38,12 +36,23 @@ def get_current_window_windows() -> Dict[str, str]:
     return {"appname": app, "title": title}
 
 
-def get_current_window() -> Optional[Callable[[], Dict[str, str]]]:
-    if sys.platform.startswith("linux"):
-        return get_current_window_linux
-    elif sys.platform == "darwin":
-        return initialize_get_macos_window()
-    elif sys.platform in ["win32", "cygwin"]:
-        return get_current_window_windows
+def init(callback: Callable[[], Any]):
+    """
+    Initializes whatever is needed.
+    Might block main thread, but will return control to `callback` on a new thread (or on the main thread, if not needed for something else).
+    """
+    if sys.platform == "darwin":
+        from . import macos
+        return macos.init(callback)
     else:
-        raise Exception("Unknown platform: {}".format(sys.platform))
+        callback()
+
+
+def get_current_window() -> Dict[str, str]:
+    if sys.platform.startswith("linux"):
+        return get_current_window_linux()
+    elif sys.platform == "darwin":
+        return get_current_window_macos()
+    elif sys.platform in ["win32", "cygwin"]:
+        return get_current_window_windows()
+    raise Exception("Unknown platform: {}".format(sys.platform))
