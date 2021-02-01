@@ -19,7 +19,8 @@ def get_current_window_linux() -> Dict[str, str]:
 def get_current_window_macos() -> Dict[str, str]:
     from . import macos
     # TODO: This should return the latest event, or block until there is one
-    return macos.get_window_event()
+    # TODO: This currently discards the event timestamp, but it should propagate upwards...
+    return macos.get_window_event()[1]
 
 
 def get_current_window_windows() -> Dict[str, str]:

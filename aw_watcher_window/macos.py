@@ -31,7 +31,7 @@ def init(callback: Callable) -> None:
     hand_over_main(watcher, callback)  # will take control of the main thread and spawn a second one for pushing heartbeats
 
 
-def get_current_window() -> Dict[str, str]:
+def get_window_event() -> Tuple[float, Dict[str, str]]:
     return watcher.get_next_event()
 
 
@@ -78,7 +78,7 @@ class Watcher:
     def stop(self):
         AppHelper.stopEventLoop()
 
-    def get_next_event(self) -> Dict[str, str]:
+    def get_next_event(self) -> Tuple[float, Dict[str, str]]:
         return self.observer.queue.get()
 
 
