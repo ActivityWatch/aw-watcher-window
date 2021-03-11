@@ -21,6 +21,7 @@ def main():
     config = load_config()
     args = parse_args(
         default_poll_time=config.getfloat("poll_time"),
+        default_event_duration=config.getfloat("event_duration"),
         default_exclude_title=config.getboolean("exclude_title"),
     )
 
@@ -39,26 +40,28 @@ def main():
     bucket_id = "{}_{}".format(client.client_name, client.client_hostname)
     event_type = "currentwindow"
 
+
     client.create_bucket(bucket_id, event_type, queued=True)
 
     logger.info("aw-watcher-window started")
 
     sleep(1)  # wait for server to start
     with client:
-        heartbeat_loop(client, bucket_id, poll_time=args.poll_time, exclude_title=args.exclude_title)
+        heartbeat_loop(client, bucket_id, poll_time=args.poll_time, event_duration=args.event_duration, exclude_title=args.exclude_title)
 
 
-def parse_args(default_poll_time: float, default_exclude_title: bool):
+def parse_args(default_poll_time: float, default_event_duration: float, default_exclude_title: bool):
     """config contains defaults loaded from the config file"""
     parser = argparse.ArgumentParser("A cross platform window watcher for Activitywatch.\nSupported on: Linux (X11), macOS and Windows.")
     parser.add_argument("--testing", dest="testing", action="store_true")
     parser.add_argument("--exclude-title", dest="exclude_title", action="store_true", default=default_exclude_title)
     parser.add_argument("--verbose", dest="verbose", action="store_true")
     parser.add_argument("--poll-time", dest="poll_time", type=float, default=default_poll_time)
+    parser.add_argument("--event-duration", dest="event_duration", type=float, default=default_event_duration)
     return parser.parse_args()
 
 
-def heartbeat_loop(client, bucket_id, poll_time, exclude_title=False):
+def heartbeat_loop(client, bucket_id, poll_time, event_duration, exclude_title=False):
     while True:
         if os.getppid() == 1:
             logger.info("window-watcher stopped because parent process died")
@@ -81,7 +84,7 @@ def heartbeat_loop(client, bucket_id, poll_time, exclude_title=False):
                 "app": current_window["appname"],
                 "title": current_window["title"] if not exclude_title else "excluded"
             }
-            current_window_event = Event(timestamp=now, data=data)
+            current_window_event = Event(timestamp=now, data=data, duration=event_duration)
 
             # Set pulsetime to 1 second more than the poll_time
             # This since the loop takes more time than poll_time

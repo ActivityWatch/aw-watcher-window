@@ -7,11 +7,13 @@ def load_config():
     default_client_config = ConfigParser()
     default_client_config["aw-watcher-window"] = {
         "exclude_title": False,
-        "poll_time": "1.0"
+        "poll_time": "1.0",
+        "event_duration": "0.0",
     }
     default_client_config["aw-watcher-window-testing"] = {
         "exclude_title": False,
-        "poll_time": "1.0"
+        "poll_time": "1.0",
+        "event_duration": "0.0",
     }
 
     # TODO: Handle so aw-watcher-window testing gets loaded instead of testing is on
