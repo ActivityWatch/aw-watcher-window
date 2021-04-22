@@ -9,7 +9,7 @@ license = "MPL-2.0"
 aw-watcher-window = "aw_watcher_window:main"
 
 [tool.poetry.dependencies]
-python = "^3.6"
+python = "^3.7"
 aw-client = {git = "https://github.com/ActivityWatch/aw-client.git"}
 python-xlib = {version = "^0.28", platform = "linux"}
 pypiwin32 = {version = "223", platform = "win32"}
