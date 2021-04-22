@@ -8,12 +8,13 @@ on:
 
 jobs:
   build:
-    name: Test on ${{ matrix.os }}
+    name: Test on ${{ matrix.os }} (py-${{ matrix.python_version }})
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-18.04, windows-latest, macOS-latest]
-        python_version: [3.6]
+        python_version: [3.6, 3.9]
     steps:
     - uses: actions/checkout@v2
       with:
@@ -25,8 +26,7 @@ jobs:
     - name: Create virtualenv
       shell: bash
       run: |
-        pip install virtualenv
-        python -m virtualenv venv
+        python -m venv venv
     - name: Install dependencies
       shell: bash
       run: |
@@ -42,11 +42,14 @@ jobs:
       shell: bash
       run: |
         source venv/bin/activate || source venv/Scripts/activate
-        pip install pyinstaller==3.5
+        pip install pyinstaller==4.3
         make package
-    #- name: Upload packages
-    #  uses: actions/upload-artifact@v2-preview
-    #  with:
-    #    name: builds-${{ runner.os }}
-    #    path: dist/activitywatch-*.*
-
+    - name: Test package
+      shell: bash
+      run: |
+          dist/aw-watcher-window/aw-watcher-window --help
+    - name: Upload package
+      uses: actions/upload-artifact@v2
+      with:
+        name: aw-watcher-window-${{ runner.os }}-py${{ matrix.python_version }}
+        path: dist/aw-watcher-window

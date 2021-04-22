@@ -38,7 +38,7 @@ tests_no_zope = ["coverage[toml] (>=5.0.2)", "hypothesis", "pympler", "pytest (>
 
 [[package]]
 name = "aw-client"
-version = "0.3.1"
+version = "0.5.0"
 description = "Client library for ActivityWatch"
 category = "main"
 optional = false
@@ -46,16 +46,16 @@ python-versions = "^3.6"
 develop = false
 
 [package.dependencies]
-aw-core = "branch master"
+aw-core = "^0.5"
 click = "^7.1.1"
-persist-queue = "^0.5.0"
+persist-queue = "^0.6.0"
 requests = "^2.22.0"
 
 [package.source]
 type = "git"
 url = "https://github.com/ActivityWatch/aw-client.git"
 reference = "master"
-resolved_reference = "bbcd1d6f5ddeddbdee62cf92471ff928499ab219"
+resolved_reference = "6ba8eb0f09ca2da2d6fd4e99ceb0b02c481a051b"
 
 [[package]]
 name = "aw-core"
@@ -63,27 +63,20 @@ version = "0.5.0"
 description = "Core library for ActivityWatch"
 category = "main"
 optional = false
-python-versions = "^3.6"
-develop = false
+python-versions = ">=3.6,<4.0"
 
 [package.dependencies]
-appdirs = "^1.4.3"
-iso8601 = "^0.1.12"
-jsonschema = "^3.1"
-peewee = "3.*"
-python-json-logger = "^0.1.11"
-strict-rfc3339 = "^0.7"
-TakeTheTime = "^0.3.1"
+appdirs = ">=1.4.3,<2.0.0"
+iso8601 = ">=0.1.12,<0.2.0"
+jsonschema = ">=3.1,<4.0"
+peewee = ">=3.0.0,<4.0.0"
+python-json-logger = ">=0.1.11,<0.2.0"
+strict-rfc3339 = ">=0.7,<0.8"
+TakeTheTime = ">=0.3.1,<0.4.0"
 timeslot = "*"
 
 [package.extras]
 mongo = ["pymongo (>=3.10.0,<4.0.0)"]
-
-[package.source]
-type = "git"
-url = "https://github.com/ActivityWatch/aw-core.git"
-reference = "master"
-resolved_reference = "c7ba6d2b7ec289aaf26ce9282cde26a386a587e5"
 
 [[package]]
 name = "certifi"
@@ -231,7 +224,7 @@ python-versions = "*"
 
 [[package]]
 name = "persist-queue"
-version = "0.5.1"
+version = "0.6.0"
 description = "A thread-safe disk based persistent queue in Python."
 category = "main"
 optional = false
@@ -535,7 +528,10 @@ attrs = [
     {file = "attrs-20.3.0.tar.gz", hash = "sha256:832aa3cde19744e49938b91fea06d69ecb9e649c93ba974535d08ad92164f700"},
 ]
 aw-client = []
-aw-core = []
+aw-core = [
+    {file = "aw-core-0.5.0.tar.gz", hash = "sha256:d74c22b4b338a20e05a3e8a345a1bc427a2579be669c5b9ea1fd04bb6fd18f9e"},
+    {file = "aw_core-0.5.0-py3-none-any.whl", hash = "sha256:d72a56a532b447fee48cad2ba0e602713d93b803dff3283256273ca5859007e5"},
+]
 certifi = [
     {file = "certifi-2020.12.5-py2.py3-none-any.whl", hash = "sha256:719a74fb9e33b9bd44cc7f3a8d94bc35e4049deebe19ba7d8e108280cfd59830"},
     {file = "certifi-2020.12.5.tar.gz", hash = "sha256:1a4995114262bffbc2413b159f2a1a480c969de6e6eb13ee966d470af86af59c"},
@@ -612,8 +608,8 @@ peewee = [
     {file = "peewee-3.14.4.tar.gz", hash = "sha256:9e356b327c2eaec6dd42ecea6f4ddded025793dba906a3d065a0452e726c51a2"},
 ]
 persist-queue = [
-    {file = "persist-queue-0.5.1.tar.gz", hash = "sha256:27a44e6376bdaff1375f09ba6e14f633192cd2bdc593b948a752d80edea4d68c"},
-    {file = "persist_queue-0.5.1-py2.py3-none-any.whl", hash = "sha256:9e2890660305847609bcbfa814ce38229b3629ea98e6fd8fb858bf9533a98d83"},
+    {file = "persist-queue-0.6.0.tar.gz", hash = "sha256:e73dd62545d37e519247d96368bfa5c510fde66999a338d6d2d44790dc10f89b"},
+    {file = "persist_queue-0.6.0-py2.py3-none-any.whl", hash = "sha256:b7a6a6e642bed23076f03d15d08d87aebad32029f3e702cc10f5b86d6fbd0cb7"},
 ]
 pluggy = [
     {file = "pluggy-0.13.1-py2.py3-none-any.whl", hash = "sha256:966c145cd83c96502c3c3868f50408687b38434af77734af1e9ca461a4081d2d"},
