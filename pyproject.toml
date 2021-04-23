@@ -18,10 +18,19 @@ pyobjc-framework-ApplicationServices = { version = "^6.2", platform="darwin"}
 pyobjc-framework-CoreText = {version = "^6.2", platform="darwin"}
 
 
+# pydbus depends on PyGObject, which needs several system libs installed,
+# to be able to be compiled:
+# * gobject-introspection-devel
+# * cairo-gobject-devel
+pydbus = { version = "^0.6.0", platform = "linux", optional = true }
+
 [tool.poetry.dev-dependencies]
 pytest = "^6.0"
 mypy = "*"
 macholib = {version = "^1.13", platform = "darwin"}  # Needed for pyinstaller
+
+[tool.poetry.extras]
+gnome = ["pydbus"]
 
 [build-system]
 requires = ["poetry>=0.12"]
