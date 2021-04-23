@@ -89,4 +89,5 @@ def heartbeat_loop(client, bucket_id, poll_time, exclude_title=False):
             client.heartbeat(bucket_id, current_window_event,
                              pulsetime=poll_time + 1.0, queued=True)
 
+        # TODO: Don't sleep on macOS where get_current_window is blocking and events are collected by underlying thread
         sleep(poll_time)
