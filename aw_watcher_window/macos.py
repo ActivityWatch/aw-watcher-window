@@ -1,21 +1,20 @@
 import subprocess
-from subprocess import PIPE
 import os
+import json
+import logging
 
+logger = logging.getLogger(__name__)
 
 def getInfo() -> str:
-    cmd = ["osascript", os.path.join(os.path.dirname(os.path.realpath(__file__)), "printAppTitle.scpt")]
-    p = subprocess.run(cmd, stdout=PIPE)
-    return str(p.stdout, "utf8").strip()
+    cmd = [os.path.join(os.path.dirname(os.path.realpath(__file__)), "printAppStatus.jxa")]
+    p = subprocess.run(cmd, stdout=subprocess.PIPE)
+    result = str(p.stdout, "utf8").strip()
 
-
-def getApp(info: str) -> str:
-    return info.split('","')[0][1:]
-
-
-def getTitle(info: str) -> str:
-    return info.split('","')[1][:-1]
-
+    try:
+        return json.loads(result)
+    except json.JSONDecodeError as e:
+        logger.warn(f"invalid JSON encountered {result}")
+        return {}
 
 def background_ensure_permissions() -> None:
     from multiprocessing import Process
