@@ -52,7 +52,7 @@ switch(appName) {
 
 // key names must match expected names in lib.py
 JSON.stringify({
-  appname: appName,
+  app: appName,
   url,
   title,
   incognito

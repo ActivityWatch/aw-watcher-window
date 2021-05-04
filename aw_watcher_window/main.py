@@ -15,6 +15,8 @@ from .config import load_config
 
 logger = logging.getLogger(__name__)
 
+# enable this line for easier debugging
+# logger.setLevel(logging.DEBUG)
 
 def main():
     # Read settings from config
@@ -70,22 +72,16 @@ def heartbeat_loop(client, bucket_id, poll_time, exclude_title=False):
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
             traceback.print_exc()
-            current_window = {"appname": "unknown", "title": "unknown"}
+            current_window = {"app": "unknown", "title": "unknown"}
 
         now = datetime.now(timezone.utc)
         if current_window is None:
             logger.debug('Unable to fetch window, trying again on next poll')
         else:
-            data = {
-                "app": current_window["appname"],
-                "title": current_window["title"] if not exclude_title else "excluded"
-            }
+            if exclude_title:
+                 current_window["title"] = "excluded"
 
-            # url is populated on macos when a browser is the frontmost application
-            if current_window.get("url", None):
-                data["url"] = current_window["url"]
-
-            current_window_event = Event(timestamp=now, data=data)
+            current_window_event = Event(timestamp=now, data=current_window)
 
             # Set pulsetime to 1 second more than the poll_time
             # This since the loop takes more time than poll_time

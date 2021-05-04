@@ -13,7 +13,7 @@ def get_current_window_linux() -> Optional[dict]:
         cls = xlib.get_window_class(window)
         name = xlib.get_window_name(window)
 
-    return {"appname": cls, "title": name}
+    return {"app": cls, "title": name}
 
 
 def get_current_window_macos() -> Optional[dict]:
@@ -33,7 +33,7 @@ def get_current_window_windows() -> Optional[dict]:
     if title is None:
         title = "unknown"
 
-    return {"appname": app, "title": title}
+    return {"app": app, "title": title}
 
 
 def get_current_window() -> Optional[dict]:
