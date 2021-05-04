@@ -14,15 +14,16 @@ aw-client = {git = "https://github.com/ActivityWatch/aw-client.git"}
 python-xlib = {version = "^0.28", platform = "linux"}
 pypiwin32 = {version = "223", platform = "win32"}
 wmi = {version = "^1.4.9", platform = "win32"}
-pyobjc-framework-ApplicationServices = { version = "^6.2", platform="darwin"}
-pyobjc-framework-CoreText = {version = "^6.2", platform="darwin"}
+pyobjc-framework-ApplicationServices = { version = "^7.2", platform="darwin"}
+pyobjc-framework-CoreText = {version = "^7.2", platform="darwin"}
 
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.0"
 mypy = "*"
 macholib = {version = "^1.13", platform = "darwin"}  # Needed for pyinstaller
+pyinstaller = "^4.3"
 
 [build-system]
-requires = ["poetry>=0.12"]
+requires = ["poetry_core>=0.12"]
 build-backend = "poetry.masonry.api"
