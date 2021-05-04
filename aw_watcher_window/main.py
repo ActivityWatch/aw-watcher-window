@@ -76,11 +76,15 @@ def heartbeat_loop(client, bucket_id, poll_time, exclude_title=False):
         if current_window is None:
             logger.debug('Unable to fetch window, trying again on next poll')
         else:
-            # Create current_window event
             data = {
                 "app": current_window["appname"],
                 "title": current_window["title"] if not exclude_title else "excluded"
             }
+
+            # url is populated on macos when a browser is the frontmost application
+            if current_window.get("url", None):
+                data["url"] = current_window["url"]
+
             current_window_event = Event(timestamp=now, data=data)
 
             # Set pulsetime to 1 second more than the poll_time
