@@ -71,11 +71,7 @@ def heartbeat_loop(client, bucket_id, poll_time, strategy, exclude_title=False):
             current_window = get_current_window(strategy)
             logger.debug(current_window)
         except Exception as e:
-            logger.error(
-                "Exception thrown while trying to get active window: {}".format(e)
-            )
-            traceback.print_exc()
-            current_window = {"app": "unknown", "title": "unknown"}
+            logger.exception("Exception thrown while trying to get active window")
 
         now = datetime.now(timezone.utc)
         if current_window is None:
