@@ -1,7 +1,6 @@
 import sys
 from typing import Optional
 
-
 def get_current_window_linux() -> Optional[dict]:
     from . import xlib
     window = xlib.get_current_window()
@@ -16,10 +15,16 @@ def get_current_window_linux() -> Optional[dict]:
     return {"app": cls, "title": name}
 
 
-def get_current_window_macos() -> Optional[dict]:
+def get_current_window_macos(strategy) -> Optional[dict]:
     # TODO should we use unknown when the title is blank like the other platforms?
-    from . import macos
-    return macos.getInfo()
+
+    # `jxa` is the default & preferred strategy. It includes the url + incognito status
+    if strategy == 'jxa':
+        from . import macos
+        return macos.getInfo()
+    else:
+        from . import macos_applescript
+        return macos_applescript.getInfo()
 
 
 def get_current_window_windows() -> Optional[dict]:
@@ -36,11 +41,11 @@ def get_current_window_windows() -> Optional[dict]:
     return {"app": app, "title": title}
 
 
-def get_current_window() -> Optional[dict]:
+def get_current_window(macos_strategy) -> Optional[dict]:
     if sys.platform.startswith("linux"):
         return get_current_window_linux()
     elif sys.platform == "darwin":
-        return get_current_window_macos()
+        return get_current_window_macos(macos_strategy)
     elif sys.platform in ["win32", "cygwin"]:
         return get_current_window_windows()
     else:
