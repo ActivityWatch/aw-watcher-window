@@ -27,4 +27,5 @@ def parse_args():
     parser.add_argument("--verbose", dest="verbose", action="store_true")
     parser.add_argument("--poll-time", dest="poll_time", type=float, default=default_poll_time)
     parser.add_argument("--macos-strategy", dest="macos_strategy", default=default_macos_strategy, choices=["jxa", "applescript"])
-    return parser.parse_args()
+    parsed_args = parser.parse_args()
+    return parsed_args
