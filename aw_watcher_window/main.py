@@ -14,8 +14,10 @@ from .config import parse_args
 
 logger = logging.getLogger(__name__)
 
-# enable this line for easier debugging
-# logger.setLevel(logging.DEBUG)
+# run with LOG_LEVEL=DEBUG
+log_level = os.environ.get('LOG_LEVEL')
+if log_level:
+    logger.setLevel(logging.__getattribute__(log_level.upper()))
 
 def main():
     if sys.platform.startswith("linux") and ("DISPLAY" not in os.environ or not os.environ["DISPLAY"]):
