@@ -22,9 +22,11 @@ def get_current_window_macos(strategy) -> Optional[dict]:
     if strategy == 'jxa':
         from . import macos
         return macos.getInfo()
-    else:
+    elif strategy == 'applescript':
         from . import macos_applescript
         return macos_applescript.getInfo()
+    else:
+        return ValueError(f"invalid strategy '{strategy}'")
 
 
 def get_current_window_windows() -> Optional[dict]:
@@ -41,11 +43,11 @@ def get_current_window_windows() -> Optional[dict]:
     return {"app": app, "title": title}
 
 
-def get_current_window(macos_strategy) -> Optional[dict]:
+def get_current_window(strategy: str = None) -> Optional[dict]:
     if sys.platform.startswith("linux"):
         return get_current_window_linux()
     elif sys.platform == "darwin":
-        return get_current_window_macos(macos_strategy)
+        return get_current_window_macos(strategy)
     elif sys.platform in ["win32", "cygwin"]:
         return get_current_window_windows()
     else:

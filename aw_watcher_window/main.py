@@ -43,17 +43,16 @@ def main():
 
     sleep(1)  # wait for server to start
     with client:
-        heartbeat_loop(client, bucket_id,
-        poll_time=args.poll_time, exclude_title=args.exclude_title, macos_strategy=args.macos_strategy)
+        heartbeat_loop(client, bucket_id, poll_time=args.poll_time, strategy=args.strategy, exclude_title=args.exclude_title)
 
-def heartbeat_loop(client, bucket_id, poll_time, macos_strategy, exclude_title=False):
+def heartbeat_loop(client, bucket_id, poll_time, strategy, exclude_title=False):
     while True:
         if os.getppid() == 1:
             logger.info("window-watcher stopped because parent process died")
             break
 
         try:
-            current_window = get_current_window(macos_strategy=macos_strategy)
+            current_window = get_current_window(strategy)
             logger.debug(current_window)
         except Exception as e:
             logger.error("Exception thrown while trying to get active window: {}".format(e))
