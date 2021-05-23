@@ -5,7 +5,9 @@ build:
 
 test:
 	aw-watcher-window --help
-	python -m mypy aw_watcher_window/ --ignore-missing-imports
+
+typecheck:
+	poetry run mypy aw_watcher_window/ --ignore-missing-imports
 
 package:
 	pyinstaller aw-watcher-window.spec --clean --noconfirm
