@@ -24,21 +24,21 @@ python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
 
 [[package]]
 name = "attrs"
-version = "20.3.0"
+version = "21.2.0"
 description = "Classes Without Boilerplate"
 category = "main"
 optional = false
-python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*"
+python-versions = ">=2.7, !=3.0.*, !=3.1.*, !=3.2.*, !=3.3.*, !=3.4.*"
 
 [package.extras]
-dev = ["coverage[toml] (>=5.0.2)", "hypothesis", "pympler", "pytest (>=4.3.0)", "six", "zope.interface", "furo", "sphinx", "pre-commit"]
-docs = ["furo", "sphinx", "zope.interface"]
-tests = ["coverage[toml] (>=5.0.2)", "hypothesis", "pympler", "pytest (>=4.3.0)", "six", "zope.interface"]
-tests_no_zope = ["coverage[toml] (>=5.0.2)", "hypothesis", "pympler", "pytest (>=4.3.0)", "six"]
+dev = ["coverage[toml] (>=5.0.2)", "hypothesis", "pympler", "pytest (>=4.3.0)", "six", "mypy", "pytest-mypy-plugins", "zope.interface", "furo", "sphinx", "sphinx-notfound-page", "pre-commit"]
+docs = ["furo", "sphinx", "zope.interface", "sphinx-notfound-page"]
+tests = ["coverage[toml] (>=5.0.2)", "hypothesis", "pympler", "pytest (>=4.3.0)", "six", "mypy", "pytest-mypy-plugins", "zope.interface"]
+tests_no_zope = ["coverage[toml] (>=5.0.2)", "hypothesis", "pympler", "pytest (>=4.3.0)", "six", "mypy", "pytest-mypy-plugins"]
 
 [[package]]
 name = "aw-client"
-version = "0.5.0"
+version = "0.5.1"
 description = "Client library for ActivityWatch"
 category = "main"
 optional = false
@@ -46,7 +46,7 @@ python-versions = "^3.7"
 develop = false
 
 [package.dependencies]
-aw-core = "^0.5"
+aw-core = "^0.5.1"
 click = "^7.1.1"
 persist-queue = "^0.6.0"
 requests = "^2.22.0"
@@ -55,15 +55,15 @@ requests = "^2.22.0"
 type = "git"
 url = "https://github.com/ActivityWatch/aw-client.git"
 reference = "master"
-resolved_reference = "2b18d1a5ac47321d67dba67a3ee16944d244aad1"
+resolved_reference = "6b08d438c5143149d1e60cc789a4da426771126c"
 
 [[package]]
 name = "aw-core"
-version = "0.5.0"
+version = "0.5.1"
 description = "Core library for ActivityWatch"
 category = "main"
 optional = false
-python-versions = ">=3.6,<4.0"
+python-versions = ">=3.7,<4.0"
 
 [package.dependencies]
 appdirs = ">=1.4.3,<2.0.0"
@@ -115,7 +115,7 @@ name = "future"
 version = "0.18.2"
 description = "Clean single-source support for Python 3 and 2"
 category = "dev"
-optional = false
+optional = true
 python-versions = ">=2.6, !=3.0.*, !=3.1.*, !=3.2.*"
 
 [[package]]
@@ -232,11 +232,11 @@ python-versions = "*"
 
 [[package]]
 name = "pefile"
-version = "2019.4.18"
+version = "2021.5.24"
 description = "Python PE parsing module"
 category = "dev"
-optional = false
-python-versions = "*"
+optional = true
+python-versions = ">=3.6.0"
 
 [package.dependencies]
 future = "*"
@@ -279,7 +279,7 @@ name = "pyinstaller"
 version = "4.3"
 description = "PyInstaller bundles a Python application and all its dependencies into a single package."
 category = "dev"
-optional = false
+optional = true
 python-versions = ">=3.6"
 
 [package.dependencies]
@@ -299,7 +299,7 @@ name = "pyinstaller-hooks-contrib"
 version = "2021.1"
 description = "Community maintained hooks for PyInstaller"
 category = "dev"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -440,7 +440,7 @@ name = "pywin32-ctypes"
 version = "0.2.0"
 description = ""
 category = "dev"
-optional = false
+optional = true
 python-versions = "*"
 
 [[package]]
@@ -463,7 +463,7 @@ socks = ["PySocks (>=1.5.6,!=1.5.7)", "win-inet-pton"]
 
 [[package]]
 name = "six"
-version = "1.15.0"
+version = "1.16.0"
 description = "Python 2 and 3 compatibility utilities"
 category = "main"
 optional = false
@@ -563,7 +563,7 @@ testing = ["pytest (>=4.6)", "pytest-checkdocs (>=1.2.3)", "pytest-flake8", "pyt
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7"
-content-hash = "89832dc32c3607ccc64ecfcbe34d227b42fd99d6ac974f73878c6c0b1dac4c9d"
+content-hash = "bd67e70a9e9b54d448483ebf5810fdc8e5d7d33401a6d2d108c10098a9864f0e"
 
 [metadata.files]
 altgraph = [
@@ -579,13 +579,13 @@ atomicwrites = [
     {file = "atomicwrites-1.4.0.tar.gz", hash = "sha256:ae70396ad1a434f9c7046fd2dd196fc04b12f9e91ffb859164193be8b6168a7a"},
 ]
 attrs = [
-    {file = "attrs-20.3.0-py2.py3-none-any.whl", hash = "sha256:31b2eced602aa8423c2aea9c76a724617ed67cf9513173fd3a4f03e3a929c7e6"},
-    {file = "attrs-20.3.0.tar.gz", hash = "sha256:832aa3cde19744e49938b91fea06d69ecb9e649c93ba974535d08ad92164f700"},
+    {file = "attrs-21.2.0-py2.py3-none-any.whl", hash = "sha256:149e90d6d8ac20db7a955ad60cf0e6881a3f20d37096140088356da6c716b0b1"},
+    {file = "attrs-21.2.0.tar.gz", hash = "sha256:ef6aaac3ca6cd92904cdd0d83f629a15f18053ec84e6432106f7a4d04ae4f5fb"},
 ]
 aw-client = []
 aw-core = [
-    {file = "aw-core-0.5.0.tar.gz", hash = "sha256:d74c22b4b338a20e05a3e8a345a1bc427a2579be669c5b9ea1fd04bb6fd18f9e"},
-    {file = "aw_core-0.5.0-py3-none-any.whl", hash = "sha256:d72a56a532b447fee48cad2ba0e602713d93b803dff3283256273ca5859007e5"},
+    {file = "aw-core-0.5.1.tar.gz", hash = "sha256:ec6ba1d140f76f832f8e69e4ff32ed498d994d438073bfa59ea588613ad2cff6"},
+    {file = "aw_core-0.5.1-py3-none-any.whl", hash = "sha256:2ce56a9365fde822e44c1cd24c9de7a6ca52ff1f5cbad794cc39c228d9a3a345"},
 ]
 certifi = [
     {file = "certifi-2020.12.5-py2.py3-none-any.whl", hash = "sha256:719a74fb9e33b9bd44cc7f3a8d94bc35e4049deebe19ba7d8e108280cfd59830"},
@@ -666,7 +666,7 @@ peewee = [
     {file = "peewee-3.14.4.tar.gz", hash = "sha256:9e356b327c2eaec6dd42ecea6f4ddded025793dba906a3d065a0452e726c51a2"},
 ]
 pefile = [
-    {file = "pefile-2019.4.18.tar.gz", hash = "sha256:a5d6e8305c6b210849b47a6174ddf9c452b2888340b8177874b862ba6c207645"},
+    {file = "pefile-2021.5.24.tar.gz", hash = "sha256:ed79b2353daa58421459abf4d685953bde0adf9f6e188944f97ba9795f100246"},
 ]
 persist-queue = [
     {file = "persist-queue-0.6.0.tar.gz", hash = "sha256:e73dd62545d37e519247d96368bfa5c510fde66999a338d6d2d44790dc10f89b"},
@@ -766,8 +766,8 @@ requests = [
     {file = "requests-2.25.1.tar.gz", hash = "sha256:27973dd4a904a4f13b263a19c866c13b92a39ed1c964655f025f3f8d3d75b804"},
 ]
 six = [
-    {file = "six-1.15.0-py2.py3-none-any.whl", hash = "sha256:8b74bedcbbbaca38ff6d7491d76f2b06b3592611af620f8426e82dddb04a5ced"},
-    {file = "six-1.15.0.tar.gz", hash = "sha256:30639c035cdb23534cd4aa2dd52c3bf48f06e5f4a941509c8bafd8ce11080259"},
+    {file = "six-1.16.0-py2.py3-none-any.whl", hash = "sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254"},
+    {file = "six-1.16.0.tar.gz", hash = "sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926"},
 ]
 strict-rfc3339 = [
     {file = "strict-rfc3339-0.7.tar.gz", hash = "sha256:5cad17bedfc3af57b399db0fed32771f18fc54bbd917e85546088607ac5e1277"},
