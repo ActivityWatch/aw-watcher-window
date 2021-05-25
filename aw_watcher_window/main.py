@@ -20,10 +20,10 @@ if log_level:
     logger.setLevel(logging.__getattribute__(log_level.upper()))
 
 def main():
+    args = parse_args()
+
     if sys.platform.startswith("linux") and ("DISPLAY" not in os.environ or not os.environ["DISPLAY"]):
         raise Exception("DISPLAY environment variable not set")
-
-    args = parse_args()
 
     setup_logging(name="aw-watcher-window", testing=args.testing, verbose=args.verbose,
                   log_stderr=True, log_file=True)
