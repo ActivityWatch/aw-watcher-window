@@ -348,6 +348,18 @@ pyobjc-framework-Cocoa = ">=7.2"
 pyobjc-framework-Quartz = ">=7.2"
 
 [[package]]
+name = "pyobjc-framework-osakit"
+version = "7.2"
+description = "Wrappers for the framework OSAKit on macOS"
+category = "main"
+optional = false
+python-versions = ">=3.6"
+
+[package.dependencies]
+pyobjc-core = ">=7.2"
+pyobjc-framework-Cocoa = ">=7.2"
+
+[[package]]
 name = "pyobjc-framework-quartz"
 version = "7.2"
 description = "Wrappers for the Quartz frameworks on macOS"
@@ -563,7 +575,7 @@ testing = ["pytest (>=4.6)", "pytest-checkdocs (>=1.2.3)", "pytest-flake8", "pyt
 [metadata]
 lock-version = "1.1"
 python-versions = "^3.7"
-content-hash = "bd67e70a9e9b54d448483ebf5810fdc8e5d7d33401a6d2d108c10098a9864f0e"
+content-hash = "683350493140fc551586703f77ffb4e9f017771df9c11d6c240c2452438a48f9"
 
 [metadata.files]
 altgraph = [
@@ -714,6 +726,10 @@ pyobjc-framework-coretext = [
     {file = "pyobjc_framework_CoreText-7.2-cp38-cp38-macosx_10_9_x86_64.whl", hash = "sha256:3013c2c006df857adcf2a3fdf1c4f185f8a75d513fa9d766922a3659940e7b0c"},
     {file = "pyobjc_framework_CoreText-7.2-cp39-cp39-macosx_10_9_universal2.whl", hash = "sha256:047c0ac8cf2075a6ee11f039df4ea53f7b87003f37a91ee2fd731a7656df9ccf"},
     {file = "pyobjc_framework_CoreText-7.2-cp39-cp39-macosx_10_9_x86_64.whl", hash = "sha256:b519e462db1747c1b6702d7abc2bf036c8570dc634d59a5f02324876826b516c"},
+]
+pyobjc-framework-osakit = [
+    {file = "pyobjc-framework-OSAKit-7.2.tar.gz", hash = "sha256:e553c2689ffd897040f6a1e24bdef6a0b3904e09f9a37bc65e377f1f016cd86a"},
+    {file = "pyobjc_framework_OSAKit-7.2-py2.py3-none-any.whl", hash = "sha256:e7d873c2cd252027b07281cd65fb14b16938e2d0ee17cca6264e23df1cfca8f8"},
 ]
 pyobjc-framework-quartz = [
     {file = "pyobjc-framework-Quartz-7.2.tar.gz", hash = "sha256:ea554e5697bc6747a4ce793c0b0036da16622b44ff75196d6124603008922afa"},
