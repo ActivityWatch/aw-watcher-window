@@ -22,7 +22,8 @@ pyobjc-framework-OSAKit = {version = "^7.2", platform="darwin"}
 pytest = "^6.0"
 mypy = "*"
 macholib = {version = "^1.13", platform = "darwin"}  # Needed for pyinstaller
+pyinstaller = {version = "^4.3", optional = true}
 
 [build-system]
-requires = ["poetry>=0.12"]
+requires = ["poetry_core>=0.12"]
 build-backend = "poetry.masonry.api"
