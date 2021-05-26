@@ -1,20 +1,26 @@
 import os
 import json
 import logging
+from typing import Dict
 
 logger = logging.getLogger(__name__)
 script = None
+
 
 def compileScript():
     # https://stackoverflow.com/questions/44209057/how-can-i-run-jxa-from-swift
     # https://stackoverflow.com/questions/16065162/calling-applescript-from-python-without-using-osascript-or-appscript
     from OSAKit import OSAScript, OSALanguage
 
-    scriptPath = os.path.join(os.path.dirname(os.path.realpath(__file__)), "printAppStatus.jxa")
+    scriptPath = os.path.join(
+        os.path.dirname(os.path.realpath(__file__)), "printAppStatus.jxa"
+    )
     scriptContents = open(scriptPath, mode="r").read()
     javascriptLanguage = OSALanguage.languageForName_("JavaScript")
 
-    script = OSAScript.alloc().initWithSource_language_(scriptContents, javascriptLanguage)
+    script = OSAScript.alloc().initWithSource_language_(
+        scriptContents, javascriptLanguage
+    )
     (success, err) = script.compileAndReturnError_(None)
 
     # should only occur if jxa was modified incorrectly
@@ -23,7 +29,8 @@ def compileScript():
 
     return script
 
-def getInfo() -> str:
+
+def getInfo() -> Dict[str, str]:
     # use a global variable to cache the compiled script for performance
     global script
     if not script:
@@ -46,8 +53,10 @@ def getInfo() -> str:
 
     return json.loads(result.stringValue())
 
+
 def background_ensure_permissions() -> None:
     from multiprocessing import Process
+
     permission_process = Process(target=ensure_permissions, args=(()))
     permission_process.start()
     return
@@ -56,6 +65,7 @@ def background_ensure_permissions() -> None:
 def ensure_permissions() -> None:
     from ApplicationServices import AXIsProcessTrusted
     from AppKit import NSAlert, NSAlertFirstButtonReturn, NSWorkspace, NSURL
+
     accessibility_permissions = AXIsProcessTrusted()
     if not accessibility_permissions:
         title = "Missing accessibility permissions"
@@ -71,11 +81,17 @@ def ensure_permissions() -> None:
         choice = alert.runModal()
         print(choice)
         if choice == NSAlertFirstButtonReturn:
-            NSWorkspace.sharedWorkspace().openURL_(NSURL.URLWithString_("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"))
+            NSWorkspace.sharedWorkspace().openURL_(
+                NSURL.URLWithString_(
+                    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+                )
+            )
+
 
 if __name__ == "__main__":
     print(getInfo())
     print("Waiting 5 seconds...")
     import time
+
     time.sleep(5)
     print(getInfo())

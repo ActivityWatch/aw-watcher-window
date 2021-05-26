@@ -1,14 +1,19 @@
+import os
 import subprocess
 from subprocess import PIPE
-import os
+from typing import Dict
 
 
 # the applescript version of the macos strategy is kept here until the jxa
 # approach is proven out in production environments
 # https://github.com/ActivityWatch/aw-watcher-window/pull/52
 
-def getInfo() -> str:
-    cmd = ["osascript", os.path.join(os.path.dirname(os.path.realpath(__file__)), "printAppTitle.scpt")]
+
+def getInfo() -> Dict[str, str]:
+    cmd = [
+        "osascript",
+        os.path.join(os.path.dirname(os.path.realpath(__file__)), "printAppTitle.scpt"),
+    ]
     p = subprocess.run(cmd, stdout=PIPE)
     info = str(p.stdout, "utf8").strip()
 

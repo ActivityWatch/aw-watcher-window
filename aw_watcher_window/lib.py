@@ -1,8 +1,10 @@
 import sys
 from typing import Optional
 
+
 def get_current_window_linux() -> Optional[dict]:
     from . import xlib
+
     window = xlib.get_current_window()
 
     if window is None:
@@ -15,22 +17,25 @@ def get_current_window_linux() -> Optional[dict]:
     return {"app": cls, "title": name}
 
 
-def get_current_window_macos(strategy) -> Optional[dict]:
+def get_current_window_macos(strategy: str) -> Optional[dict]:
     # TODO should we use unknown when the title is blank like the other platforms?
 
     # `jxa` is the default & preferred strategy. It includes the url + incognito status
-    if strategy == 'jxa':
-        from . import macos
-        return macos.getInfo()
-    elif strategy == 'applescript':
+    if strategy == "jxa":
+        from . import macos_jxa
+
+        return macos_jxa.getInfo()
+    elif strategy == "applescript":
         from . import macos_applescript
+
         return macos_applescript.getInfo()
     else:
-        return ValueError(f"invalid strategy '{strategy}'")
+        raise ValueError(f"invalid strategy '{strategy}'")
 
 
 def get_current_window_windows() -> Optional[dict]:
     from . import windows
+
     window_handle = windows.get_active_window_handle()
     app = windows.get_app_name(window_handle)
     title = windows.get_window_title(window_handle)
