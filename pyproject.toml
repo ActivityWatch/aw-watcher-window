@@ -14,9 +14,9 @@ aw-client = {git = "https://github.com/ActivityWatch/aw-client.git"}
 python-xlib = {version = "^0.28", platform = "linux"}
 pypiwin32 = {version = "223", platform = "win32"}
 wmi = {version = "^1.4.9", platform = "win32"}
-pyobjc-framework-ApplicationServices = { version = "^6.2", platform="darwin"}
-pyobjc-framework-CoreText = {version = "^6.2", platform="darwin"}
-
+pyobjc-framework-ApplicationServices = { version = "^7.2", platform="darwin"}
+pyobjc-framework-CoreText = {version = "^7.2", platform="darwin"}
+pyobjc-framework-OSAKit = {version = "^7.2", platform="darwin"}
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.0"

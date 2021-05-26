@@ -15,10 +15,10 @@ To install the latest git version directly from github without cloning, run
 `pip install git+https://github.com/ActivityWatch/aw-watcher-window.git`
 
 To install from a cloned version, cd into the directory and run
-`poetry install` to install inside an virtualenv. If you want to install it
-system-wide it can be installed with `pip install .`, but that has the issue
-that it might not get the exact version of the dependencies due to not reading
-the poetry.lock file.
+`poetry install` to install inside an virtualenv. You can run the binary via `aw-watcher-window`.
+
+If you want to install it system-wide it can be installed with `pip install .`, but that has the issue
+that it might not get the exact version of the dependencies due to not reading the poetry.lock file.
 
 ## Note to macOS users
 
