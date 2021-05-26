@@ -7,8 +7,8 @@ on:
     branches: [ master ]
 
 jobs:
-  build:
-    name: Test on ${{ matrix.os }} (py-${{ matrix.python_version }})
+  test:
+    name: test on ${{ matrix.os }} (py-${{ matrix.python_version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -53,3 +53,29 @@ jobs:
       with:
         name: aw-watcher-window-${{ runner.os }}-py${{ matrix.python_version }}
         path: dist/aw-watcher-window
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v2
+      with:
+        submodules: 'recursive'
+    - name: Set up Python
+      uses: actions/setup-python@v1
+      with:
+        python-version: ${{ matrix.python_version }}
+    - name: Create virtualenv
+      shell: bash
+      run: |
+        python -m venv venv
+    - name: Install dependencies
+      shell: bash
+      run: |
+        pip install poetry
+        source venv/bin/activate || source venv/Scripts/activate
+        poetry install
+    - name: Typecheck
+      shell: bash
+      run: |
+        source venv/bin/activate || source venv/Scripts/activate
+        make typecheck
