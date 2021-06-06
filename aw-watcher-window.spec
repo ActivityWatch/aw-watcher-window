@@ -6,7 +6,10 @@ block_cipher = None
 a = Analysis(['aw_watcher_window/__main__.py'],
              pathex=[],
              binaries=None,
-             datas=[("aw_watcher_window/printAppTitle.scpt", "aw_watcher_window")],
+             datas=[
+               ("aw_watcher_window/printAppTitle.scpt", "aw_watcher_window"),
+               ("aw_watcher_window/printAppStatus.jxa", "aw_watcher_window"),
+             ],
              hiddenimports=[],
              hookspath=[],
              runtime_hooks=[],
