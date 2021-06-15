@@ -38,7 +38,7 @@ tests_no_zope = ["coverage[toml] (>=5.0.2)", "hypothesis", "pympler", "pytest (>
 
 [[package]]
 name = "aw-client"
-version = "0.5.3"
+version = "0.5.4"
 description = "Client library for ActivityWatch"
 category = "main"
 optional = false
@@ -611,8 +611,8 @@ attrs = [
     {file = "attrs-21.2.0.tar.gz", hash = "sha256:ef6aaac3ca6cd92904cdd0d83f629a15f18053ec84e6432106f7a4d04ae4f5fb"},
 ]
 aw-client = [
-    {file = "aw-client-0.5.3.tar.gz", hash = "sha256:fecfb41cfe16a731a8992bd43dee04eb055ee05042f7551ba5c32a276c6c9a46"},
-    {file = "aw_client-0.5.3-py3-none-any.whl", hash = "sha256:63db185a2156684316f656df60dbd008f81ba4c42e82ad2b33afd13b07590b07"},
+    {file = "aw-client-0.5.4.tar.gz", hash = "sha256:d14642226773a59e90cc353f69146759765560d027adc40eb5e169989f0d7556"},
+    {file = "aw_client-0.5.4-py3-none-any.whl", hash = "sha256:5a3a12ab6771cbc95c08fa631e069f058781aa8b66e5c1985ca51a87f8f38efe"},
 ]
 aw-core = [
     {file = "aw-core-0.5.3.tar.gz", hash = "sha256:6f7867103ebb8b07bf788ed02fd55dee51d1038f2a3a0e9fd82d1a7897bf6acb"},
