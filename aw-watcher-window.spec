@@ -8,7 +8,6 @@ a = Analysis(
     pathex=[],
     binaries=None,
     datas=[
-        ("aw_watcher_window/printAppTitle.scpt", "aw_watcher_window"),
         ("aw_watcher_window/printAppStatus.jxa", "aw_watcher_window"),
     ],
     hiddenimports=[],

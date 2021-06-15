@@ -10,7 +10,7 @@ aw-watcher-window = "aw_watcher_window:main"
 
 [tool.poetry.dependencies]
 python = "^3.7"
-aw-client = {git = "https://github.com/ActivityWatch/aw-client.git"}
+aw-client = "^0.5"
 python-xlib = {version = "^0.28", platform = "linux"}
 pypiwin32 = {version = "223", platform = "win32"}
 wmi = {version = "^1.4.9", platform = "win32"}
