@@ -8,35 +8,47 @@ script = None
 
 
 def compileScript():
-    # https://stackoverflow.com/questions/44209057/how-can-i-run-jxa-from-swift
-    # https://stackoverflow.com/questions/16065162/calling-applescript-from-python-without-using-osascript-or-appscript
+    """
+    Compiles the JXA script and caches the result.
+
+    Resources:
+     - https://stackoverflow.com/questions/44209057/how-can-i-run-jxa-from-swift
+     - https://stackoverflow.com/questions/16065162/calling-applescript-from-python-without-using-osascript-or-appscript
+    """
+
+    # use a global variable to cache the compiled script for performance
+    global script
+    if script:
+        return script
+
     from OSAKit import OSAScript, OSALanguage
 
     scriptPath = os.path.join(
         os.path.dirname(os.path.realpath(__file__)), "printAppStatus.jxa"
     )
-    scriptContents = open(scriptPath, mode="r").read()
-    javascriptLanguage = OSALanguage.languageForName_("JavaScript")
+    with open(scriptPath) as f:
+        scriptContents = f.read()
+
+        # remove shebang line
+        if scriptContents.split("\n")[0].startswith("#"):
+            scriptContents = "\n".join(scriptContents.split("\n")[1:])
 
     script = OSAScript.alloc().initWithSource_language_(
-        scriptContents, javascriptLanguage
+        scriptContents, OSALanguage.languageForName_("JavaScript")
     )
-    (success, err) = script.compileAndReturnError_(None)
+    success, err = script.compileAndReturnError_(None)
 
     # should only occur if jxa was modified incorrectly
     if not success:
-        raise Exception("error compiling jxa script")
+        raise Exception(f"error compiling jxa script: {err['NSLocalizedDescription']}")
 
     return script
 
 
 def getInfo() -> Dict[str, str]:
-    # use a global variable to cache the compiled script for performance
-    global script
-    if not script:
-        script = compileScript()
+    script = compileScript()
 
-    (result, err) = script.executeAndReturnError_(None)
+    result, err = script.executeAndReturnError_(None)
 
     if err:
         # error structure:
@@ -49,7 +61,7 @@ def getInfo() -> Dict[str, str]:
         #     OSAScriptErrorRangeKey = "NSRange: {0, 0}";
         # }
 
-        raise Exception("jxa error: {}".format(err["NSLocalizedDescription"]))
+        raise Exception(f"jxa error: {err['NSLocalizedDescription']}")
 
     return json.loads(result.stringValue())
 
