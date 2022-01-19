@@ -20,7 +20,11 @@ To install from a cloned version, cd into the directory and run
 If you want to install it system-wide it can be installed with `pip install .`, but that has the issue
 that it might not get the exact version of the dependencies due to not reading the poetry.lock file.
 
-## Note to macOS users
+## Usage
+
+In order for this watcher to be available in the UI, you'll need to have a Away From Computer (afk) watcher running alongside it.
+
+### Note to macOS users
 
 To log current window title the terminal needs access to macOS accessibility API.
 This can be enabled in `System Preferences > Security & Privacy > Accessibility`, then add the Terminal to this list. If this is not enabled the watcher can only log current application, and not window title.
