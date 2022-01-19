@@ -14,9 +14,9 @@ aw-client = "^0.5"
 python-xlib = {version = "^0.28", platform = "linux"}
 pypiwin32 = {version = "223", platform = "win32"}
 wmi = {version = "^1.4.9", platform = "win32"}
-pyobjc-framework-ApplicationServices = { version = "^7.2", platform="darwin"}
-pyobjc-framework-CoreText = {version = "^7.2", platform="darwin"}
-pyobjc-framework-OSAKit = {version = "^7.2", platform="darwin"}
+pyobjc-framework-ApplicationServices = { version = "^8.1", platform="darwin"}
+pyobjc-framework-CoreText = {version = "^8.1", platform="darwin"}
+pyobjc-framework-OSAKit = {version = "^8.1", platform="darwin"}
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.0"
