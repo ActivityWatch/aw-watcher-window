@@ -66,6 +66,8 @@ def heartbeat_loop(client, bucket_id, poll_time, strategy, exclude_title=False):
             logger.info("window-watcher stopped because parent process died")
             break
 
+        current_window = None
+
         try:
             current_window = get_current_window(strategy)
             logger.debug(current_window)
