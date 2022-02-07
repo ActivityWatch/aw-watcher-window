@@ -24,7 +24,7 @@ switch(appName) {
   case "Safari":
     // incognito is not available via safari applescript
     url = Application(appName).documents[0].url();
-	  title = Application(appName).documents[0].name();
+    title = Application(appName).documents[0].name();
     break;
   case "Google Chrome": 
   case "Google Chrome Canary":
@@ -36,6 +36,10 @@ switch(appName) {
     url = activeTab.url();
     title = activeTab.name();
     incognito = activeWindow.mode() === 'incognito';
+    break;
+  case "Firefox":
+  case "Firefox Developer Edition":
+    title = Application(appName).windows[0].name();
     break;
   default:
     try {
