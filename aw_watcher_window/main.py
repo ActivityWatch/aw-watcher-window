@@ -1,5 +1,4 @@
 import logging
-import traceback
 import sys
 import os
 from time import sleep
@@ -67,15 +66,13 @@ def heartbeat_loop(client, bucket_id, poll_time, strategy, exclude_title=False):
             logger.info("window-watcher stopped because parent process died")
             break
 
+        current_window = None
+
         try:
             current_window = get_current_window(strategy)
             logger.debug(current_window)
         except Exception as e:
-            logger.error(
-                "Exception thrown while trying to get active window: {}".format(e)
-            )
-            traceback.print_exc()
-            current_window = {"app": "unknown", "title": "unknown"}
+            logger.exception("Exception thrown while trying to get active window")
 
         now = datetime.now(timezone.utc)
         if current_window is None:
