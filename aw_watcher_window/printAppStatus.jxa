@@ -42,6 +42,11 @@ switch(appName) {
     title = Application(appName).windows[0].name();
     break;
   default:
+    // Some applications aren't "scriptable" according to JXA/applescript, and so you can't get their attributes or properties.
+    // This was leading the original script to fail at executing, both when setting mainWindow and later when setting title.
+    // This meant that everything for that window was recorded as unknown.
+    // To fix this, I first try to get the window the old way, and if this fails then to get the name of the frontmost window as the title.
+    // This works very well, it seems to get appName and title accurately, and avoids failing to execute and getting Unknown app names.
     try {
       mainWindow = oProcess.windows().find((w, i) => w && w.attributes && w.attributes() && w.attributes.byName("AXMain") && w.attributes.byName("AXMain").value() === true)
     } catch {
@@ -51,6 +56,7 @@ switch(appName) {
 
     // in some cases, the primary window of an application may not be found
     // this occurs rarely and seems to be triggered by switching to a different application
+    // NEW: I believe the above issue is fixed by the new try-catch structure below which falls back to the name of the frontmost window as the title.
     try {
       title = mainWindow && mainWindow.
         attributes && mainWindow.attributes.
