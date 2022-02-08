@@ -26,7 +26,7 @@ switch(appName) {
     url = Application(appName).documents[0].url();
     title = Application(appName).documents[0].name();
     break;
-  case "Google Chrome": 
+  case "Google Chrome":
   case "Google Chrome Canary":
   case "Chromium":
   case "Brave Browser":
@@ -46,7 +46,7 @@ switch(appName) {
       mainWindow = oProcess.windows().find((w, i) => w && w.attributes && w.attributes() && w.attributes.byName("AXMain") && w.attributes.byName("AXMain").value() === true)
     } catch {
         mainWindow = oProcess.windows()[0]
-      };
+    };
     
 
     // in some cases, the primary window of an application may not be found
@@ -58,7 +58,7 @@ switch(appName) {
         value()
     } catch {
         title = oProcess.windows[0].name()
-      };
+    };
 
 }
 
