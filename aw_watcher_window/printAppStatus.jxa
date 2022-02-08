@@ -50,7 +50,7 @@ switch(appName) {
     try {
       mainWindow = oProcess.windows().find((w, i) => w && w.attributes && w.attributes() && w.attributes.byName("AXMain") && w.attributes.byName("AXMain").value() === true)
     } catch {
-        mainWindow = oProcess.windows()[0]
+      mainWindow = oProcess.windows()[0]
     };
     
 
@@ -63,7 +63,7 @@ switch(appName) {
         byName("AXTitle").
         value()
     } catch {
-        title = oProcess.windows[0].name()
+      title = oProcess.windows[0].name()
     };
 
 }
