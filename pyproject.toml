@@ -11,18 +11,18 @@ aw-watcher-window = "aw_watcher_window:main"
 [tool.poetry.dependencies]
 python = "^3.7"
 aw-client = "^0.5"
-python-xlib = {version = "^0.28", platform = "linux"}
+python-xlib = {version = "*", platform = "linux"}
 pypiwin32 = {version = "223", platform = "win32"}
-wmi = {version = "^1.4.9", platform = "win32"}
-pyobjc-framework-ApplicationServices = { version = "^8.1", platform="darwin"}
-pyobjc-framework-CoreText = {version = "^8.1", platform="darwin"}
-pyobjc-framework-OSAKit = {version = "^8.1", platform="darwin"}
+wmi = {version = "*", platform = "win32"}
+pyobjc-framework-ApplicationServices = { version = "*", platform="darwin"}
+pyobjc-framework-CoreText = {version = "*", platform="darwin"}
+pyobjc-framework-OSAKit = {version = "*", platform="darwin"}
 
 [tool.poetry.dev-dependencies]
 pytest = "^6.0"
 mypy = "*"
-macholib = {version = "^1.13", platform = "darwin"}  # Needed for pyinstaller
-pyinstaller = {version = "^4.3", optional = true}
+macholib = {version = "*", platform = "darwin"}  # Needed for pyinstaller
+pyinstaller = {version = "*", optional = true}
 
 [build-system]
 requires = ["poetry_core>=0.12"]
