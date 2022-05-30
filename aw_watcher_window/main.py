@@ -15,12 +15,6 @@ from .macos_permissions import background_ensure_permissions
 
 logger = logging.getLogger(__name__)
 
-# run with LOG_LEVEL=DEBUG
-log_level = os.environ.get("LOG_LEVEL")
-if log_level:
-    logger.setLevel(logging.__getattribute__(log_level.upper()))
-
-
 def main():
     args = parse_args()
 
