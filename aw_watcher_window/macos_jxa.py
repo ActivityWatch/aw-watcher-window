@@ -34,9 +34,9 @@ def _compileScript():
     with open(scriptPath) as f:
         scriptContents = f.read()
 
-        # # remove shebang line
-        # if scriptContents.split("\n")[0].startswith("#"):
-        #     scriptContents = "\n".join(scriptContents.split("\n")[1:])
+        # remove shebang line, due to "unexpected token '#'" in some unknown cases/macOS versions"
+        if scriptContents.split("\n")[0].startswith("#"):
+            scriptContents = "\n".join(scriptContents.split("\n")[1:])
 
     script = OSAScript.alloc().initWithSource_language_(
         scriptContents, OSALanguage.languageForName_("JavaScript")
