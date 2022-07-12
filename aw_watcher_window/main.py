@@ -40,7 +40,9 @@ def main():
     if sys.platform == "darwin":
         background_ensure_permissions()
 
-    client = ActivityWatchClient("aw-watcher-window", testing=args.testing)
+    client = ActivityWatchClient(
+        "aw-watcher-window", host=args.host, port=args.port, testing=args.testing
+    )
 
     bucket_id = "{}_{}".format(client.client_name, client.client_hostname)
     event_type = "currentwindow"
@@ -71,7 +73,7 @@ def heartbeat_loop(client, bucket_id, poll_time, strategy, exclude_title=False):
         try:
             current_window = get_current_window(strategy)
             logger.debug(current_window)
-        except Exception as e:
+        except Exception:
             logger.exception("Exception thrown while trying to get active window")
 
         now = datetime.now(timezone.utc)
