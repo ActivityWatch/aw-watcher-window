@@ -51,7 +51,7 @@ def get_window_name(window: Window) -> str:
     try:
         d = window.get_full_property(NET_WM_NAME, UTF8_STRING)
     except Xlib.error.XError as e:
-        logger.warning("Unable to get window property NET_WM_NAME, got a {} exception from Xlib".format(type(e).__name__))
+        logger.warning(f"Unable to get window property NET_WM_NAME, got a {type(e).__name__} exception from Xlib")
         # I strongly suspect window.get_wm_name() will also fail and we should return "unknown" right away.
         # But I don't know, so I pass the thing on, for now.
         d = None
@@ -69,7 +69,7 @@ def get_window_name(window: Window) -> str:
         try:
             return d.value.decode('utf8')
         except UnicodeError:
-            logger.warning("Failed to decode one or more characters which will be skipped, bytes are: {}".format(d.value))
+            logger.warning(f"Failed to decode one or more characters which will be skipped, bytes are: {d.value}")
             if isinstance(d.value, bytes):
                 return d.value.decode('utf8', 'ignore')
             else:
@@ -92,7 +92,7 @@ def get_window_class(window: Window) -> str:
         try:
             window = window.query_tree().parent
         except Xlib.error.XError as e:
-            logger.warning("Unable to get window query_tree().parent, got a {} exception from Xlib".format(type(e).__name__))
+            logger.warning(f"Unable to get window query_tree().parent, got a {type(e).__name__} exception from Xlib")
             return "unknown"
         if window:
             return get_window_class(window)

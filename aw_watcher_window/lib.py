@@ -56,4 +56,4 @@ def get_current_window(strategy: str = None) -> Optional[dict]:
     elif sys.platform in ["win32", "cygwin"]:
         return get_current_window_windows()
     else:
-        raise Exception("Unknown platform: {}".format(sys.platform))
+        raise Exception(f"Unknown platform: {sys.platform}")

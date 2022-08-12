@@ -44,7 +44,7 @@ def main():
         "aw-watcher-window", host=args.host, port=args.port, testing=args.testing
     )
 
-    bucket_id = "{}_{}".format(client.client_name, client.client_hostname)
+    bucket_id = f"{client.client_name}_{client.client_hostname}"
     event_type = "currentwindow"
 
     client.create_bucket(bucket_id, event_type, queued=True)
