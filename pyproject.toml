@@ -19,7 +19,7 @@ pyobjc-framework-CoreText = {version = "*", platform="darwin"}
 pyobjc-framework-OSAKit = {version = "*", platform="darwin"}
 
 [tool.poetry.dev-dependencies]
-pytest = "^6.0"
+pytest = "^7.0"
 mypy = "*"
 macholib = {version = "*", platform = "darwin"}  # Needed for pyinstaller
 pyinstaller = {version = "*", optional = true}
