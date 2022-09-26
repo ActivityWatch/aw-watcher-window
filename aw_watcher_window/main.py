@@ -2,6 +2,7 @@ import logging
 import sys
 import os
 import subprocess
+import signal
 from time import sleep
 from datetime import datetime, timezone
 
@@ -20,6 +21,14 @@ logger = logging.getLogger(__name__)
 log_level = os.environ.get("LOG_LEVEL")
 if log_level:
     logger.setLevel(logging.__getattribute__(log_level.upper()))
+
+
+def kill_process(pid):
+    logger.info("Killing process {}".format(pid))
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        logger.info("Process {} already dead".format(pid))
 
 
 def main():
@@ -60,16 +69,22 @@ def main():
                 os.path.dirname(os.path.realpath(__file__)), "aw-watcher-window-macos"
             )
 
-            # FIXME: Doesn't quit when parent process dies
-            subprocess.call(
-                [
-                    binpath,
-                    client.server_address,
-                    bucket_id,
-                    client.client_hostname,
-                    client.client_name,
-                ]
-            )
+            try:
+                p = subprocess.Popen(
+                    [
+                        binpath,
+                        client.server_address,
+                        bucket_id,
+                        client.client_hostname,
+                        client.client_name,
+                    ]
+                )
+                # terminate swift process when this process dies
+                signal.signal(signal.SIGTERM, lambda *_: kill_process(p.pid))
+                p.wait()
+            except KeyboardInterrupt:
+                print("KeyboardInterrupt")
+                kill_process(p.pid)
         else:
             heartbeat_loop(
                 client,
