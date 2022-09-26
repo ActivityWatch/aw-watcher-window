@@ -42,7 +42,7 @@ def parse_args():
         "--strategy",
         dest="strategy",
         default=default_strategy_macos,
-        choices=["jxa", "applescript"],
+        choices=["jxa", "applescript", "swift"],
         help="(macOS only) strategy to use for retrieving the active window",
     )
     parsed_args = parser.parse_args()
