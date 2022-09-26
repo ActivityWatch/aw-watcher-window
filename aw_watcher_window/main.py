@@ -53,13 +53,20 @@ def main():
 
     sleep(1)  # wait for server to start
     with client:
-        heartbeat_loop(
-            client,
-            bucket_id,
-            poll_time=args.poll_time,
-            strategy=args.strategy,
-            exclude_title=args.exclude_title,
-        )
+        if args.strategy == "swift":
+            logger.info("Using swift strategy, calling out to swift binary")
+            import subprocess
+
+            # TODO: pass config to swift code
+            subprocess.call(["./aw-watcher-window-macos"])
+        else:
+            heartbeat_loop(
+                client,
+                bucket_id,
+                poll_time=args.poll_time,
+                strategy=args.strategy,
+                exclude_title=args.exclude_title,
+            )
 
 
 def heartbeat_loop(client, bucket_id, poll_time, strategy, exclude_title=False):

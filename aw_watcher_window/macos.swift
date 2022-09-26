@@ -19,7 +19,7 @@ extension SBObject: ChromeWindow, ChromeTab {}
 
 extension SBApplication: ChromeProtocol {}
 
-struct NetworkMessage: Codable {
+struct NetworkMessage: Codable, Equatable {
   var app: String
   var title: String
   var url: String?
@@ -41,7 +41,7 @@ let clientName = "aw-watcher-window2"
 let bucketName = "\(clientName)_\(clientHostname)"
 
 let main = MainThing()
-var oldHeartbeatData: NetworkMessage?
+var oldHeartbeat: Heartbeat?
 
 let encoder = JSONEncoder()
 let formatter = ISO8601DateFormatter()
@@ -71,27 +71,36 @@ func start() {
     name: NSWorkspace.didActivateApplicationNotification,
     object: nil)
   main.focusedAppChanged()
-  detectIdle()
+  //detectIdle()
 }
 
+// TODO: This will be unused for now, as aw-watcher-afk handles it
 func detectIdle() {
-  let seconds = 15.0 - SystemIdleTime()!
-  if seconds < 0.0 {
-    sendHeartbeat(data: NetworkMessage(app: "", title: ""))
+  // TODO: read from config
+  let idletimeout = 3 * 60.0;
+  let untilidle = idletimeout - SystemIdleTime()!
+  if untilidle < 0.0 {
+    // Became idle
+
+    // TODO: send proper event
+    sendHeartbeat(Heartbeat(timestamp: Date.now, data: NetworkMessage(app: "", title: "")))
 
     var monitor: Any?
     monitor = NSEvent.addGlobalMonitorForEvents(matching: [
       .mouseMoved, .leftMouseDown, .rightMouseDown, .keyDown,
     ]) { e in
+      print("User activity detected")
       NSEvent.removeMonitor(monitor!)
-      if let oldMenu = oldHeartbeatData { sendHeartbeat(data: oldMenu) }
+      if let oldbeat = oldHeartbeat {
+        sendHeartbeat(Heartbeat(timestamp: Date.now, data: oldbeat.data))
+      }
       detectIdle()
     }
 
     return
   }
 
-  DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+  DispatchQueue.main.asyncAfter(deadline: .now() + untilidle) {
     detectIdle()
   }
 }
@@ -113,35 +122,60 @@ func createBucket() {
   }
 }
 
-func sendHeartbeat(data: NetworkMessage) {
-  let payload0 = oldHeartbeatData.map {
-    try! encoder.encode(Heartbeat(timestamp: Date.now, data: $0))
+func sendHeartbeat(_ heartbeat: Heartbeat) {
+  // First, send heartbeat ending last event, if event data differs
+  let payload_old: Heartbeat? = oldHeartbeat.flatMap {
+    if $0.data != heartbeat.data {
+      return Heartbeat(timestamp: heartbeat.timestamp, data: $0.data)
+    } else {
+      return Optional<Heartbeat>.none
+    }
   }
-  let payload = try! encoder.encode(Heartbeat(timestamp: Date.now, data: data))
 
-  let url = URL(string: "http://localhost:5600/api/0/buckets/\(bucketName)/heartbeat?pulsetime=999999")!
+  // Then, send heartbeat starting new event
+  let payload_new = heartbeat
+
+  // TODO: set proper pulsetime
   Task {
-    if let payload0 = payload0 {
-      var urlRequest = URLRequest(url: url)
-      urlRequest.httpMethod = "POST"
-      urlRequest.addValue("application/json", forHTTPHeaderField: "Content-Type")
-      let (_, response) = try await URLSession.shared.upload(for: urlRequest, from: payload0)
-      guard (200...299).contains((response as! HTTPURLResponse).statusCode) else {
-        print("Failed to send window exit heartbeat")
+    if let payload_old = payload_old {
+      let since_last_seconds = heartbeat.timestamp.timeIntervalSince(oldHeartbeat!.timestamp) + 1
+      do {
+        try await sendHeartbeatSingle(payload_old, pulsetime: since_last_seconds);
+      } catch {
+        print("Failed to send heartbeat: \(error)")
         return
       }
     }
 
-    var urlRequest = URLRequest(url: url)
-    urlRequest.httpMethod = "POST"
-    urlRequest.addValue("application/json", forHTTPHeaderField: "Content-Type")
-    let (_, response) = try await URLSession.shared.upload(for: urlRequest, from: payload)
-    guard (200...299).contains((response as! HTTPURLResponse).statusCode) else {
-      print("Failed to send window enter heartbeat")
+    do {
+      let since_last_seconds = heartbeat.timestamp.timeIntervalSince((oldHeartbeat ?? heartbeat).timestamp) + 1
+      try await sendHeartbeatSingle(payload_new, pulsetime: since_last_seconds);
+    } catch {
+      print("Failed to send heartbeat: \(error)")
       return
     }
 
+    // Assign the latest heartbeat as the old heartbeat
+    oldHeartbeat = heartbeat
   }
+}
+
+enum HeartbeatError: Error {
+    case error(msg: String)
+}
+
+func sendHeartbeatSingle(_ heartbeat: Heartbeat, pulsetime: Double) async throws {
+  let url = URL(string: "http://localhost:5600/api/0/buckets/\(bucketName)/heartbeat?pulsetime=\(pulsetime)")!
+  var urlRequest = URLRequest(url: url)
+  urlRequest.httpMethod = "POST"
+  urlRequest.addValue("application/json", forHTTPHeaderField: "Content-Type")
+  let payload = try! encoder.encode(heartbeat)
+  let (_, response) = try await URLSession.shared.upload(for: urlRequest, from: payload)
+  guard (200...299).contains((response as! HTTPURLResponse).statusCode) else {
+    throw HeartbeatError.error(msg: "Failed to send heartbeat: \(response)")
+  }
+  // TODO: remove this debug logging when done
+  print("Sent heartbeat with timestamp: \(heartbeat.timestamp), pulsetime: \(round(pulsetime * 10) / 10), app: \(heartbeat.data.app), title: \(heartbeat.data.title)")
 }
 
 class MainThing {
@@ -154,7 +188,6 @@ class MainThing {
     axElement: AXUIElement,
     notification: CFString
   ) {
-
     let frontmost = NSWorkspace.shared.frontmostApplication!
     var windowTitle: AnyObject?
     AXUIElementCopyAttributeValue(axElement, kAXTitleAttribute as CFString, &windowTitle)
@@ -175,8 +208,8 @@ class MainThing {
       }
     }
 
-    sendHeartbeat(data: data)
-    oldHeartbeatData = data
+    let heartbeat = Heartbeat(timestamp: Date.now, data: data)
+    sendHeartbeat(heartbeat)
   }
 
   @objc func focusedWindowChanged(_ observer: AXObserver, window: AXUIElement) {
