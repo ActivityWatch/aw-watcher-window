@@ -36,9 +36,12 @@ struct Bucket: Codable {
   var hostname: String
 }
 
-let clientHostname = ProcessInfo.processInfo.hostName
-let clientName = "aw-watcher-window2"
-let bucketName = "\(clientName)_\(clientHostname)"
+// Placeholder values, set in start()
+var baseurl = "http://localhost:5600"
+// NOTE: this differs from the hostname we get from Python, here we get `.local`, but in Python we get `.localdomain`
+var clientHostname = ProcessInfo.processInfo.hostName
+var clientName = "aw-watcher-window"
+var bucketName = "\(clientName)_\(clientHostname)"
 
 let main = MainThing()
 var oldHeartbeat: Heartbeat?
@@ -57,6 +60,22 @@ start()
 RunLoop.main.run()
 
 func start() {
+  // Arguments should be:
+  //  - url + port
+  //  - bucket_id
+  //  - hostname
+  //  - client_id
+  let arguments = CommandLine.arguments
+  // Check that we get 4 arguments
+  if arguments.count != 5 {
+    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client>")
+    exit(1)
+  }
+  baseurl = arguments[1]
+  bucketName = arguments[2]
+  clientHostname = arguments[3]
+  clientName = arguments[4]
+
   guard checkAccess() else {
     DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
       start()
@@ -109,7 +128,7 @@ func createBucket() {
   let payload = try! encoder.encode(
     Bucket(client: clientName, type: "currentwindow", hostname: clientHostname))
 
-  let url = URL(string: "http://localhost:5600/api/0/buckets/\(bucketName)")!
+  let url = URL(string: "\(baseurl)/api/0/buckets/\(bucketName)")!
   Task {
     var urlRequest = URLRequest(url: url)
     urlRequest.httpMethod = "POST"
@@ -165,7 +184,7 @@ enum HeartbeatError: Error {
 }
 
 func sendHeartbeatSingle(_ heartbeat: Heartbeat, pulsetime: Double) async throws {
-  let url = URL(string: "http://localhost:5600/api/0/buckets/\(bucketName)/heartbeat?pulsetime=\(pulsetime)")!
+  let url = URL(string: "\(baseurl)/api/0/buckets/\(bucketName)/heartbeat?pulsetime=\(pulsetime)")!
   var urlRequest = URLRequest(url: url)
   urlRequest.httpMethod = "POST"
   urlRequest.addValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -175,7 +194,7 @@ func sendHeartbeatSingle(_ heartbeat: Heartbeat, pulsetime: Double) async throws
     throw HeartbeatError.error(msg: "Failed to send heartbeat: \(response)")
   }
   // TODO: remove this debug logging when done
-  print("Sent heartbeat with timestamp: \(heartbeat.timestamp), pulsetime: \(round(pulsetime * 10) / 10), app: \(heartbeat.data.app), title: \(heartbeat.data.title)")
+  print("[heartbeat] timestamp: \(heartbeat.timestamp), pulsetime: \(round(pulsetime * 10) / 10), app: \(heartbeat.data.app), title: \(heartbeat.data.title)")
 }
 
 class MainThing {
