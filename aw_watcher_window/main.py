@@ -58,7 +58,15 @@ def main():
             import subprocess
 
             # TODO: pass config to swift code
-            subprocess.call(["./aw-watcher-window-macos"])
+            subprocess.call(
+                [
+                    "./aw-watcher-window-macos",
+                    client.server_address,
+                    bucket_id,
+                    client.client_hostname,
+                    client.client_name,
+                ]
+            )
         else:
             heartbeat_loop(
                 client,
