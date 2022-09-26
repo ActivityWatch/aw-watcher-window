@@ -1,6 +1,7 @@
 import logging
 import sys
 import os
+import subprocess
 from time import sleep
 from datetime import datetime, timezone
 
@@ -55,12 +56,15 @@ def main():
     with client:
         if args.strategy == "swift":
             logger.info("Using swift strategy, calling out to swift binary")
-            import subprocess
+
+            binpath = os.path.join(
+                os.path.dirname(os.path.realpath(__file__)), "aw-watcher-window-macos"
+            )
 
             # TODO: pass config to swift code
             subprocess.call(
                 [
-                    "./aw-watcher-window-macos",
+                    binpath,
                     client.server_address,
                     bucket_id,
                     client.client_hostname,
