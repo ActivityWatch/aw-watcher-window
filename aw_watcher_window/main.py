@@ -60,7 +60,7 @@ def main():
                 os.path.dirname(os.path.realpath(__file__)), "aw-watcher-window-macos"
             )
 
-            # TODO: pass config to swift code
+            # FIXME: Doesn't quit when parent process dies
             subprocess.call(
                 [
                     binpath,
