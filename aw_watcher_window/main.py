@@ -54,9 +54,8 @@ def main():
 
     sleep(1)  # wait for server to start
     with client:
-        if args.strategy == "swift":
+        if sys.platform == "darwin" and args.strategy == "swift":
             logger.info("Using swift strategy, calling out to swift binary")
-
             binpath = os.path.join(
                 os.path.dirname(os.path.realpath(__file__)), "aw-watcher-window-macos"
             )
