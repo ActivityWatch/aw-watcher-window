@@ -5,7 +5,7 @@ block_cipher = None
 a = Analysis(
     ["aw_watcher_window/__main__.py"],
     pathex=[],
-    binaries=[("aw-watcher-window-macos", ".")] if platform.system() == "Darwin" else [],
+    binaries=[("aw_watcher_window/aw-watcher-window-macos", "aw_watcher_window")] if platform.system() == "Darwin" else [],
     datas=[
         ("aw_watcher_window/printAppStatus.jxa", "aw_watcher_window"),
     ],
