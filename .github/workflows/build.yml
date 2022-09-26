@@ -32,7 +32,7 @@ jobs:
       run: |
         pip install poetry
         source venv/bin/activate || source venv/Scripts/activate
-        poetry install
+        make build
     - name: Run tests
       shell: bash
       run: |
@@ -72,7 +72,7 @@ jobs:
       run: |
         pip install poetry
         source venv/bin/activate || source venv/Scripts/activate
-        poetry install
+        make build
     - name: Typecheck
       shell: bash
       run: |
