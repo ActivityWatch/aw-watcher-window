@@ -19,6 +19,61 @@ extension SBObject: ChromeWindow, ChromeTab {}
 
 extension SBApplication: ChromeProtocol {}
 
+// https://github.com/tingraldi/SwiftScripting/blob/4346eba0f47e806943601f5fb2fe978e2066b310/Frameworks/SafariScripting/SafariScripting/Safari.swift#L37
+
+@objc public protocol SafariDocument {
+    @objc optional var name: String { get } // Its name.
+    @objc optional var modified: Bool { get } // Has it been modified since the last save?
+    @objc optional var file: URL { get } // Its location on disk, if it has one.
+    @objc optional var source: String { get } // The HTML source of the web page currently loaded in the document.
+    @objc optional var URL: String { get } // The current URL of the document.
+    @objc optional var text: String { get } // The text of the web page currently loaded in the document. Modifications to text aren't reflected on the web page.
+    @objc optional func setURL(_ URL: String!) // The current URL of the document.
+}
+
+@objc public protocol SafariTab {
+    @objc optional var source: String { get } // The HTML source of the web page currently loaded in the tab.
+    @objc optional var URL: String { get } // The current URL of the tab.
+    @objc optional var index: NSNumber { get } // The index of the tab, ordered left to right.
+    @objc optional var text: String { get } // The text of the web page currently loaded in the tab. Modifications to text aren't reflected on the web page.
+    @objc optional var visible: Bool { get } // Whether the tab is currently visible.
+    @objc optional var name: String { get } // The name of the tab.
+    @objc optional func setURL(_ URL: String!) // The current URL of the tab.
+}
+
+@objc public protocol SafariWindow {
+    @objc optional var name: String { get } // The title of the window.
+    @objc optional func id() -> Int // The unique identifier of the window.
+    @objc optional var index: Int { get } // The index of the window, ordered front to back.
+    @objc optional var bounds: NSRect { get } // The bounding rectangle of the window.
+    @objc optional var closeable: Bool { get } // Does the window have a close button?
+    @objc optional var miniaturizable: Bool { get } // Does the window have a minimize button?
+    @objc optional var miniaturized: Bool { get } // Is the window minimized right now?
+    @objc optional var resizable: Bool { get } // Can the window be resized?
+    @objc optional var visible: Bool { get } // Is the window visible right now?
+    @objc optional var zoomable: Bool { get } // Does the window have a zoom button?
+    @objc optional var zoomed: Bool { get } // Is the window zoomed right now?
+    @objc optional var document: SafariDocument { get } // The document whose contents are displayed in the window.
+    @objc optional func setIndex(_ index: Int) // The index of the window, ordered front to back.
+    @objc optional func setBounds(_ bounds: NSRect) // The bounding rectangle of the window.
+    @objc optional func setMiniaturized(_ miniaturized: Bool) // Is the window minimized right now?
+    @objc optional func setVisible(_ visible: Bool) // Is the window visible right now?
+    @objc optional func setZoomed(_ zoomed: Bool) // Is the window zoomed right now?
+    @objc optional func tabs() -> SBElementArray
+    @objc optional var currentTab: SafariTab { get } // The current tab.
+    @objc optional func setCurrentTab(_ currentTab: SafariTab!) // The current tab.
+}
+extension SBObject: SafariWindow {}
+
+@objc public protocol SafariApplication {
+    @objc optional func documents() -> SBElementArray
+    @objc optional func windows() -> [SafariWindow]
+    @objc optional var name: String { get } // The name of the application.
+    @objc optional var frontmost: Bool { get } // Is this the active application?
+}
+extension SBApplication: SafariApplication {}
+
+
 struct NetworkMessage: Codable, Equatable {
   var app: String
   var title: String
@@ -90,38 +145,6 @@ func start() {
     name: NSWorkspace.didActivateApplicationNotification,
     object: nil)
   main.focusedAppChanged()
-  //detectIdle()
-}
-
-// TODO: This will be unused for now, as aw-watcher-afk handles it
-func detectIdle() {
-  // TODO: read from config
-  let idletimeout = 3 * 60.0;
-  let untilidle = idletimeout - SystemIdleTime()!
-  if untilidle < 0.0 {
-    // Became idle
-
-    // TODO: send proper event
-    sendHeartbeat(Heartbeat(timestamp: Date.now, data: NetworkMessage(app: "", title: "")))
-
-    var monitor: Any?
-    monitor = NSEvent.addGlobalMonitorForEvents(matching: [
-      .mouseMoved, .leftMouseDown, .rightMouseDown, .keyDown,
-    ]) { e in
-      print("User activity detected")
-      NSEvent.removeMonitor(monitor!)
-      if let oldbeat = oldHeartbeat {
-        sendHeartbeat(Heartbeat(timestamp: Date.now, data: oldbeat.data))
-      }
-      detectIdle()
-    }
-
-    return
-  }
-
-  DispatchQueue.main.asyncAfter(deadline: .now() + untilidle) {
-    detectIdle()
-  }
 }
 
 func createBucket() {
@@ -185,16 +208,19 @@ enum HeartbeatError: Error {
 
 func sendHeartbeatSingle(_ heartbeat: Heartbeat, pulsetime: Double) async throws {
   let url = URL(string: "\(baseurl)/api/0/buckets/\(bucketName)/heartbeat?pulsetime=\(pulsetime)")!
+
   var urlRequest = URLRequest(url: url)
   urlRequest.httpMethod = "POST"
   urlRequest.addValue("application/json", forHTTPHeaderField: "Content-Type")
+
   let payload = try! encoder.encode(heartbeat)
   let (_, response) = try await URLSession.shared.upload(for: urlRequest, from: payload)
+
   guard (200...299).contains((response as! HTTPURLResponse).statusCode) else {
     throw HeartbeatError.error(msg: "Failed to send heartbeat: \(response)")
   }
   // TODO: remove this debug logging when done
-  print("[heartbeat] timestamp: \(heartbeat.timestamp), pulsetime: \(round(pulsetime * 10) / 10), app: \(heartbeat.data.app), title: \(heartbeat.data.title)")
+  print("[heartbeat] timestamp: \(heartbeat.timestamp), pulsetime: \(round(pulsetime * 10) / 10), app: \(heartbeat.data.app), title: \(heartbeat.data.title), url: \(heartbeat.data.url ?? "")")
 }
 
 class MainThing {
@@ -208,13 +234,23 @@ class MainThing {
     notification: CFString
   ) {
     let frontmost = NSWorkspace.shared.frontmostApplication!
+    let bundleIdentifier = frontmost.bundleIdentifier!
+
     var windowTitle: AnyObject?
     AXUIElementCopyAttributeValue(axElement, kAXTitleAttribute as CFString, &windowTitle)
 
     var data = NetworkMessage(app: frontmost.localizedName!, title: windowTitle as? String ?? "")
 
-    if frontmost.localizedName == "Google Chrome" {
-      let chromeObject: ChromeProtocol = SBApplication.init(bundleIdentifier: "com.google.Chrome")!
+    // list of chrome equivalent browsers
+    let chromeBrowsers = [
+      "Google Chrome",
+      "Google Chrome Canary",
+      "Chromium",
+      "Brave Browser",
+    ]
+
+    if chromeBrowsers.contains(frontmost.localizedName!) {
+      let chromeObject: ChromeProtocol = SBApplication.init(bundleIdentifier: bundleIdentifier)!
 
       let frontWindow = chromeObject.windows!()[0]
       let activeTab = frontWindow.activeTab!
@@ -225,6 +261,15 @@ class MainThing {
         data.url = activeTab.URL
         if let title = activeTab.title { data.title = title }
       }
+    } else if frontmost.localizedName == "Safari" {
+      let safariObject: SafariApplication = SBApplication.init(bundleIdentifier: bundleIdentifier)!
+
+      let frontWindow = safariObject.windows!()[0]
+      let activeTab = frontWindow.currentTab!
+
+      // Safari doesn't have an incognito mode, we cannot hide the url
+      data.url = activeTab.URL
+      if let title = activeTab.name { data.title = title }
     }
 
     let heartbeat = Heartbeat(timestamp: Date.now, data: data)
