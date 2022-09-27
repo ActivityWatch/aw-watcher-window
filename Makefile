@@ -24,3 +24,4 @@ package:
 clean:
 	rm -rf build dist
 	rm -rf aw_watcher_window/__pycache__
+	rm aw_watcher_window/aw-watcher-window-macos
