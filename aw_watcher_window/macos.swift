@@ -226,7 +226,6 @@ func sendHeartbeatSingle(_ heartbeat: Heartbeat, pulsetime: Double) async throws
 class MainThing {
   var observer: AXObserver?
   var oldWindow: AXUIElement?
-  var idle = false
 
   func windowTitleChanged(
     _ axObserver: AXObserver,
@@ -348,35 +347,4 @@ func checkAccess() -> Bool {
   let options = [checkOptPrompt: true]
   let accessEnabled = AXIsProcessTrustedWithOptions(options as CFDictionary?)
   return accessEnabled
-}
-
-func SystemIdleTime() -> Double? {
-  var iterator: io_iterator_t = 0
-  defer { IOObjectRelease(iterator) }
-  guard
-    IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOHIDSystem"), &iterator)
-      == KERN_SUCCESS
-  else {
-    return nil
-  }
-
-  let entry: io_registry_entry_t = IOIteratorNext(iterator)
-  defer { IOObjectRelease(entry) }
-  guard entry != 0 else { return nil }
-
-  var unmanagedDict: Unmanaged<CFMutableDictionary>? = nil
-  defer { unmanagedDict?.release() }
-  guard
-    IORegistryEntryCreateCFProperties(entry, &unmanagedDict, kCFAllocatorDefault, 0) == KERN_SUCCESS
-  else { return nil }
-  guard let dict = unmanagedDict?.takeUnretainedValue() else { return nil }
-
-  let key: CFString = "HIDIdleTime" as CFString
-  let value = CFDictionaryGetValue(dict, Unmanaged.passUnretained(key).toOpaque())
-  let number: CFNumber = unsafeBitCast(value, to: CFNumber.self)
-  var nanoseconds: Int64 = 0
-  guard CFNumberGetValue(number, CFNumberType.sInt64Type, &nanoseconds) else { return nil }
-  let interval = Double(nanoseconds) / Double(NSEC_PER_SEC)
-
-  return interval
 }
