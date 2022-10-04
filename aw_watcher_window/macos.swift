@@ -214,6 +214,7 @@ func sendHeartbeat(_ heartbeat: Heartbeat) {
 
         let refreshedOldHeartbeat = Heartbeat(
           // it is important to refresh the hearbeat using the timestamp where the user stopped working on the previous application
+          // more info: https://github.com/ActivityWatch/aw-watcher-window/pull/69
           // TODO unsure if this is necessary: does the timestamp of the old vs new event need to be distinct
           timestamp: heartbeat.timestamp - 1,
           data: oldHeartbeat!.data
