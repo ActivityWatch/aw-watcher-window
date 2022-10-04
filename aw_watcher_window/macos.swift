@@ -45,23 +45,9 @@ extension SBApplication: ChromeProtocol {}
     @objc optional var name: String { get } // The title of the window.
     @objc optional func id() -> Int // The unique identifier of the window.
     @objc optional var index: Int { get } // The index of the window, ordered front to back.
-    @objc optional var bounds: NSRect { get } // The bounding rectangle of the window.
-    @objc optional var closeable: Bool { get } // Does the window have a close button?
-    @objc optional var miniaturizable: Bool { get } // Does the window have a minimize button?
-    @objc optional var miniaturized: Bool { get } // Is the window minimized right now?
-    @objc optional var resizable: Bool { get } // Can the window be resized?
-    @objc optional var visible: Bool { get } // Is the window visible right now?
-    @objc optional var zoomable: Bool { get } // Does the window have a zoom button?
-    @objc optional var zoomed: Bool { get } // Is the window zoomed right now?
     @objc optional var document: SafariDocument { get } // The document whose contents are displayed in the window.
-    @objc optional func setIndex(_ index: Int) // The index of the window, ordered front to back.
-    @objc optional func setBounds(_ bounds: NSRect) // The bounding rectangle of the window.
-    @objc optional func setMiniaturized(_ miniaturized: Bool) // Is the window minimized right now?
-    @objc optional func setVisible(_ visible: Bool) // Is the window visible right now?
-    @objc optional func setZoomed(_ zoomed: Bool) // Is the window zoomed right now?
     @objc optional func tabs() -> SBElementArray
     @objc optional var currentTab: SafariTab { get } // The current tab.
-    @objc optional func setCurrentTab(_ currentTab: SafariTab!) // The current tab.
 }
 extension SBObject: SafariWindow {}
 
@@ -73,6 +59,7 @@ extension SBObject: SafariWindow {}
 }
 extension SBApplication: SafariApplication {}
 
+// AW-specific structs
 
 struct NetworkMessage: Codable, Equatable {
   var app: String
@@ -85,13 +72,45 @@ struct Heartbeat: Codable {
   var data: NetworkMessage
 }
 
+enum HeartbeatError: Error {
+  case error(msg: String)
+}
+
 struct Bucket: Codable {
   var client: String
   var type: String
   var hostname: String
 }
 
-// Placeholder values, set in start()
+// there's no builtin logging library on macos which has levels & hits stdout, so we build our own simple one
+// there a complex open source one, but it makes it harder to compile this simple one-file swift application
+
+func logTimestamp() -> String {
+  let now = Date()
+  let formatter = DateFormatter()
+  formatter.timeZone = TimeZone.current
+  formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+  return formatter.string(from: now)
+}
+
+// generate log prefix based on level
+func logPrefix(_ level: String) -> String {
+  return "\(logTimestamp()) [aw-watcher-window-macos] [\(level)]"
+}
+
+let logLevel = ProcessInfo.processInfo.environment["LOG_LEVEL"]?.uppercased() ?? "INFO"
+
+func debug(_ msg: String) {
+  if(logLevel == "DEBUG") {
+    print("\(logPrefix("DEBUG")) \(msg)")
+  }
+}
+
+func log(_ msg: String) {
+  print("\(logPrefix("INFO")) \(msg)")
+}
+
+// Placeholder values, set in start() from CLI arguments
 var baseurl = "http://localhost:5600"
 // NOTE: this differs from the hostname we get from Python, here we get `.local`, but in Python we get `.localdomain`
 var clientHostname = ProcessInfo.processInfo.hostName
@@ -121,11 +140,13 @@ func start() {
   //  - hostname
   //  - client_id
   let arguments = CommandLine.arguments
+
   // Check that we get 4 arguments
   if arguments.count != 5 {
     print("Usage: aw-watcher-window <url> <bucket> <hostname> <client>")
     exit(1)
   }
+
   baseurl = arguments[1]
   bucketName = arguments[2]
   clientHostname = arguments[3]
@@ -140,13 +161,18 @@ func start() {
 
   createBucket()
 
+  // listen for changes in focused application
   NSWorkspace.shared.notificationCenter.addObserver(
-    main, selector: #selector(main.focusedAppChanged),
+    main,
+    selector: #selector(main.focusedAppChanged),
     name: NSWorkspace.didActivateApplicationNotification,
-    object: nil)
+    object: nil
+  )
+
   main.focusedAppChanged()
 }
 
+// TODO might be better to have the python wrapper create this before launching the swift application
 func createBucket() {
   let payload = try! encoder.encode(
     Bucket(client: clientName, type: "currentwindow", hostname: clientHostname))
@@ -158,52 +184,58 @@ func createBucket() {
     urlRequest.addValue("application/json", forHTTPHeaderField: "Content-Type")
     let (_, response) = try await URLSession.shared.upload(for: urlRequest, from: payload)
     guard (200...299).contains((response as! HTTPURLResponse).statusCode) else {
-      print("Failed to create bucket")
+      log("Failed to create bucket")
       return
     }
   }
 }
 
 func sendHeartbeat(_ heartbeat: Heartbeat) {
-  // First, send heartbeat ending last event, if event data differs
-  let payload_old: Heartbeat? = oldHeartbeat.flatMap {
-    if $0.data != heartbeat.data {
-      return Heartbeat(timestamp: heartbeat.timestamp, data: $0.data)
-    } else {
-      return Optional<Heartbeat>.none
-    }
+  let oldPayloadDifferent = oldHeartbeat != nil && oldHeartbeat!.data != heartbeat.data
+  let timeSinceLastHeartbeat = oldHeartbeat != nil ? heartbeat.timestamp.timeIntervalSince(oldHeartbeat!.timestamp) : -1.0
+
+  // if you resize a window a ton of events (subsecond) will be fired
+  // we enforce a 1s minimum gap between events to avoid this
+  if timeSinceLastHeartbeat != -1.0 && timeSinceLastHeartbeat <= 1.0 {
+    debug("skipping heartbeat, last heartbeat was sent 1s ago")
+    return
   }
 
-  // Then, send heartbeat starting new event
-  let payload_new = heartbeat
-
-  // TODO: set proper pulsetime
+  // TODO running these async could cause weird state issues since the observer stuff can send a log of heartbeats
+  //      in a short time under certain circumstances, and we don't want to send them all
   Task {
-    if let payload_old = payload_old {
-      let since_last_seconds = heartbeat.timestamp.timeIntervalSince(oldHeartbeat!.timestamp) + 1
+    if oldPayloadDifferent {
+      debug("sending old heartbeat for merging")
+
       do {
-        try await sendHeartbeatSingle(payload_old, pulsetime: since_last_seconds);
+        // unlike the python aw-client library, we do not enforce a `commit_interval` and instead send the old event (which is not invalid)
+        // at the current time with a pulse value equal to the time since this event was originally sent. The aw-server will then merge
+        // this new event with the original event, extending the recorded time spent on this particular window/application.
+
+        let refreshedOldHeartbeat = Heartbeat(
+          // it is important to refresh the hearbeat using the timestamp where the user stopped working on the previous application
+          // TODO unsure if this is necessary: does the timestamp of the old vs new event need to be distinct
+          timestamp: heartbeat.timestamp - 1,
+          data: oldHeartbeat!.data
+        )
+
+        try await sendHeartbeatSingle(refreshedOldHeartbeat, pulsetime: timeSinceLastHeartbeat)
       } catch {
-        print("Failed to send heartbeat: \(error)")
+        log("Failed to send old heartbeat: \(error)")
         return
       }
     }
 
     do {
-      let since_last_seconds = heartbeat.timestamp.timeIntervalSince((oldHeartbeat ?? heartbeat).timestamp) + 1
-      try await sendHeartbeatSingle(payload_new, pulsetime: since_last_seconds);
+      let since_last_seconds = heartbeat.timestamp.timeIntervalSince(heartbeat.timestamp) + 1
+      try await sendHeartbeatSingle(heartbeat, pulsetime: since_last_seconds)
     } catch {
-      print("Failed to send heartbeat: \(error)")
+      log("Failed to send heartbeat: \(error)")
       return
     }
 
-    // Assign the latest heartbeat as the old heartbeat
     oldHeartbeat = heartbeat
   }
-}
-
-enum HeartbeatError: Error {
-    case error(msg: String)
 }
 
 func sendHeartbeatSingle(_ heartbeat: Heartbeat, pulsetime: Double) async throws {
@@ -219,8 +251,8 @@ func sendHeartbeatSingle(_ heartbeat: Heartbeat, pulsetime: Double) async throws
   guard (200...299).contains((response as! HTTPURLResponse).statusCode) else {
     throw HeartbeatError.error(msg: "Failed to send heartbeat: \(response)")
   }
-  // TODO: remove this debug logging when done
-  print("[heartbeat] timestamp: \(heartbeat.timestamp), pulsetime: \(round(pulsetime * 10) / 10), app: \(heartbeat.data.app), title: \(heartbeat.data.title), url: \(heartbeat.data.url ?? "")")
+
+  debug("[heartbeat] bucket: \(bucketName), timestamp: \(heartbeat.timestamp), pulsetime: \(round(pulsetime * 10) / 10), app: \(heartbeat.data.app), title: \(heartbeat.data.title), url: \(heartbeat.data.url ?? "")")
 }
 
 class MainThing {
@@ -234,6 +266,9 @@ class MainThing {
   ) {
     let frontmost = NSWorkspace.shared.frontmostApplication!
     let bundleIdentifier = frontmost.bundleIdentifier!
+
+    // calculate now before executing any scripting since that can take some time
+    let nowTime = Date.now
 
     var windowTitle: AnyObject?
     AXUIElementCopyAttributeValue(axElement, kAXTitleAttribute as CFString, &windowTitle)
@@ -249,6 +284,8 @@ class MainThing {
     ]
 
     if chromeBrowsers.contains(frontmost.localizedName!) {
+      debug("Chrome browser detected, extracting URL and title")
+
       let chromeObject: ChromeProtocol = SBApplication.init(bundleIdentifier: bundleIdentifier)!
 
       let frontWindow = chromeObject.windows!()[0]
@@ -261,6 +298,8 @@ class MainThing {
         if let title = activeTab.title { data.title = title }
       }
     } else if frontmost.localizedName == "Safari" {
+      debug("Safari browser detected, extracting URL and title")
+
       let safariObject: SafariApplication = SBApplication.init(bundleIdentifier: bundleIdentifier)!
 
       let frontWindow = safariObject.windows!()[0]
@@ -271,11 +310,13 @@ class MainThing {
       if let title = activeTab.name { data.title = title }
     }
 
-    let heartbeat = Heartbeat(timestamp: Date.now, data: data)
+    let heartbeat = Heartbeat(timestamp: nowTime, data: data)
     sendHeartbeat(heartbeat)
   }
 
   @objc func focusedWindowChanged(_ observer: AXObserver, window: AXUIElement) {
+    debug("Focused window changed")
+
     if oldWindow != nil {
       AXObserverRemoveNotification(
         observer, oldWindow!, kAXFocusedWindowChangedNotification as CFString)
@@ -291,11 +332,14 @@ class MainThing {
   }
 
   @objc func focusedAppChanged() {
+    debug("Focused app changed")
+
     if observer != nil {
       CFRunLoopRemoveSource(
         RunLoop.current.getCFRunLoop(),
         AXObserverGetRunLoopSource(observer!),
-        CFRunLoopMode.defaultMode)
+        CFRunLoopMode.defaultMode
+      )
     }
 
     let frontmost = NSWorkspace.shared.frontmostApplication!
@@ -312,7 +356,7 @@ class MainThing {
           userData: UnsafeMutableRawPointer?
         ) -> Void in
         guard let userData = userData else {
-          print("Missing userData")
+          log("Missing userData")
           return
         }
         let application = Unmanaged<MainThing>.fromOpaque(userData).takeUnretainedValue()
@@ -320,7 +364,10 @@ class MainThing {
           application.focusedWindowChanged(axObserver, window: axElement)
         } else {
           application.windowTitleChanged(
-            axObserver, axElement: axElement, notification: notification)
+            axObserver,
+            axElement: axElement,
+            notification: notification
+          )
         }
       }, &observer)
 
@@ -331,7 +378,8 @@ class MainThing {
     CFRunLoopAddSource(
       RunLoop.current.getCFRunLoop(),
       AXObserverGetRunLoopSource(observer!),
-      CFRunLoopMode.defaultMode)
+      CFRunLoopMode.defaultMode
+    )
 
     var focusedWindow: AnyObject?
     AXUIElementCopyAttributeValue(focusedApp, kAXFocusedWindowAttribute as CFString, &focusedWindow)
@@ -342,6 +390,7 @@ class MainThing {
   }
 }
 
+// TODO I believe this is handled by the python wrapper so it isn't needed here
 func checkAccess() -> Bool {
   let checkOptPrompt = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as NSString
   let options = [checkOptPrompt: true]
