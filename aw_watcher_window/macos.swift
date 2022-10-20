@@ -84,13 +84,13 @@ struct Bucket: Codable {
 
 // there's no builtin logging library on macos which has levels & hits stdout, so we build our own simple one
 // there a complex open source one, but it makes it harder to compile this simple one-file swift application
+let dateFormatter =  DateFormatter();
 
 func logTimestamp() -> String {
   let now = Date()
-  let formatter = DateFormatter()
-  formatter.timeZone = TimeZone.current
-  formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-  return formatter.string(from: now)
+  dateFormatter.timeZone = TimeZone.current
+  dateFormatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
+  return dateFormatter.string(from: now)
 }
 
 // generate log prefix based on level
