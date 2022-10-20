@@ -196,7 +196,7 @@ func sendHeartbeat(_ heartbeat: Heartbeat) {
 
   // if you resize a window a ton of events (subsecond) will be fired
   // we enforce a 1s minimum gap between events to avoid this
-  if timeSinceLastHeartbeat != -1.0 && timeSinceLastHeartbeat <= 1.0 {
+  if timeSinceLastHeartbeat != -1.0 && timeSinceLastHeartbeat <= 0.5 {
     debug("skipping heartbeat, last heartbeat was sent 1s ago")
     return
   }
