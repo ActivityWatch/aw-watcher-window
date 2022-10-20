@@ -306,7 +306,7 @@ class MainThing {
       let frontWindow = safariObject.windows!()[0]
       let activeTab = frontWindow.currentTab!
 
-      // Safari doesn't have an incognito mode, we cannot hide the url
+      // Safari doesn't allow incognito mode to be inspected, so we do not know if we should hide the url
       data.url = activeTab.URL
       if let title = activeTab.name { data.title = title }
     }
