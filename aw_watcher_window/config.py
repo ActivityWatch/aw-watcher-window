@@ -2,7 +2,6 @@ import argparse
 
 from aw_core.config import load_config_toml
 
-
 default_config = """
 [aw-watcher-window]
 exclude_title = false
@@ -23,7 +22,7 @@ def parse_args():
     default_strategy_macos = config["strategy_macos"]
 
     parser = argparse.ArgumentParser(
-        "A cross platform window watcher for Activitywatch.\nSupported on: Linux (X11), macOS and Windows."
+        description="A cross platform window watcher for Activitywatch.\nSupported on: Linux (X11), macOS and Windows."
     )
     parser.add_argument("--host", dest="host")
     parser.add_argument("--port", dest="port")
