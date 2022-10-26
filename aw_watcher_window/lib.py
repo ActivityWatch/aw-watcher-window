@@ -1,6 +1,8 @@
 import sys
 from typing import Optional
 
+from .exceptions import FatalError
+
 
 def get_current_window_linux() -> Optional[dict]:
     from . import xlib
@@ -30,7 +32,7 @@ def get_current_window_macos(strategy: str) -> Optional[dict]:
 
         return macos_applescript.getInfo()
     else:
-        raise ValueError(f"invalid strategy '{strategy}'")
+        raise FatalError(f"invalid strategy '{strategy}'")
 
 
 def get_current_window_windows() -> Optional[dict]:
@@ -49,11 +51,17 @@ def get_current_window_windows() -> Optional[dict]:
 
 
 def get_current_window(strategy: str = None) -> Optional[dict]:
+    """
+    :raises FatalError: if a fatal error occurs (e.g. unsupported platform, X server closed)
+    """
+
     if sys.platform.startswith("linux"):
         return get_current_window_linux()
     elif sys.platform == "darwin":
+        if strategy is None:
+            raise FatalError("macOS strategy not specified")
         return get_current_window_macos(strategy)
     elif sys.platform in ["win32", "cygwin"]:
         return get_current_window_windows()
     else:
-        raise Exception(f"Unknown platform: {sys.platform}")
+        raise FatalError(f"Unknown platform: {sys.platform}")
