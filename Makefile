@@ -2,6 +2,15 @@
 
 build:
 	poetry install
+	# if macOS, build swift
+	if [ "$(shell uname)" = "Darwin" ]; then \
+		make build-swift; \
+	fi
+
+build-swift: aw_watcher_window/aw-watcher-window-macos
+
+aw_watcher_window/aw-watcher-window-macos: aw_watcher_window/macos.swift
+	swiftc $^ -o $@
 
 test:
 	aw-watcher-window --help

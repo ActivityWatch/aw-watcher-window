@@ -1,3 +1,4 @@
 from aw_watcher_window import main
 
-main()
+if __name__ == "__main__":
+    main()

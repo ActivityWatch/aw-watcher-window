@@ -1,17 +1,19 @@
 import logging
-import sys
 import os
-from time import sleep
+import signal
+import subprocess
+import sys
 from datetime import datetime, timezone
+from time import sleep
 
-from aw_core.models import Event
-from aw_core.log import setup_logging
 from aw_client import ActivityWatchClient
+from aw_core.log import setup_logging
+from aw_core.models import Event
 
-from .lib import get_current_window
 from .config import parse_args
+from .exceptions import FatalError
+from .lib import get_current_window
 from .macos_permissions import background_ensure_permissions
-
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,14 @@ logger = logging.getLogger(__name__)
 log_level = os.environ.get("LOG_LEVEL")
 if log_level:
     logger.setLevel(logging.__getattribute__(log_level.upper()))
+
+
+def kill_process(pid):
+    logger.info("Killing process {}".format(pid))
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        logger.info("Process {} already dead".format(pid))
 
 
 def main():
@@ -40,9 +50,11 @@ def main():
     if sys.platform == "darwin":
         background_ensure_permissions()
 
-    client = ActivityWatchClient("aw-watcher-window", testing=args.testing)
+    client = ActivityWatchClient(
+        "aw-watcher-window", host=args.host, port=args.port, testing=args.testing
+    )
 
-    bucket_id = "{}_{}".format(client.client_name, client.client_hostname)
+    bucket_id = f"{client.client_name}_{client.client_hostname}"
     event_type = "currentwindow"
 
     client.create_bucket(bucket_id, event_type, queued=True)
@@ -51,13 +63,36 @@ def main():
 
     sleep(1)  # wait for server to start
     with client:
-        heartbeat_loop(
-            client,
-            bucket_id,
-            poll_time=args.poll_time,
-            strategy=args.strategy,
-            exclude_title=args.exclude_title,
-        )
+        if sys.platform == "darwin" and args.strategy == "swift":
+            logger.info("Using swift strategy, calling out to swift binary")
+            binpath = os.path.join(
+                os.path.dirname(os.path.realpath(__file__)), "aw-watcher-window-macos"
+            )
+
+            try:
+                p = subprocess.Popen(
+                    [
+                        binpath,
+                        client.server_address,
+                        bucket_id,
+                        client.client_hostname,
+                        client.client_name,
+                    ]
+                )
+                # terminate swift process when this process dies
+                signal.signal(signal.SIGTERM, lambda *_: kill_process(p.pid))
+                p.wait()
+            except KeyboardInterrupt:
+                print("KeyboardInterrupt")
+                kill_process(p.pid)
+        else:
+            heartbeat_loop(
+                client,
+                bucket_id,
+                poll_time=args.poll_time,
+                strategy=args.strategy,
+                exclude_title=args.exclude_title,
+            )
 
 
 def heartbeat_loop(client, bucket_id, poll_time, strategy, exclude_title=False):
@@ -67,20 +102,36 @@ def heartbeat_loop(client, bucket_id, poll_time, strategy, exclude_title=False):
             break
 
         current_window = None
-
         try:
             current_window = get_current_window(strategy)
             logger.debug(current_window)
-        except Exception as e:
-            logger.exception("Exception thrown while trying to get active window")
+        except (FatalError, OSError):
+            # Fatal exceptions should quit the program
+            try:
+                logger.exception("Fatal error, stopping")
+            except OSError:
+                pass
+            break
+        except Exception:
+            # Non-fatal exceptions should be logged
+            try:
+                # If stdout has been closed, this exception-print can cause (I think)
+                #   OSError: [Errno 5] Input/output error
+                # See: https://github.com/ActivityWatch/activitywatch/issues/756#issue-1296352264
+                #
+                # However, I'm unable to reproduce the OSError in a test (where I close stdout before logging),
+                # so I'm in uncharted waters here... but this solution should work.
+                logger.exception("Exception thrown while trying to get active window")
+            except OSError:
+                break
 
-        now = datetime.now(timezone.utc)
         if current_window is None:
             logger.debug("Unable to fetch window, trying again on next poll")
         else:
             if exclude_title:
                 current_window["title"] = "excluded"
 
+            now = datetime.now(timezone.utc)
             current_window_event = Event(timestamp=now, data=current_window)
 
             # Set pulsetime to 1 second more than the poll_time

@@ -5,3 +5,4 @@ build
 dist
 *.swp
 .mypy_cache
+aw-watcher-window-macos

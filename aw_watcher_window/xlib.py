@@ -1,10 +1,12 @@
-from typing import Optional
 import logging
+from typing import Optional
 
 import Xlib
 import Xlib.display
+from Xlib import X
 from Xlib.xobject.drawable import Window
-from Xlib import X, Xatom
+
+from .exceptions import FatalError
 
 logger = logging.getLogger(__name__)
 
@@ -30,15 +32,28 @@ def _get_current_window_id() -> Optional[int]:
 
 
 def _get_window(window_id: int) -> Window:
-    return display.create_resource_object('window', window_id)
+    return display.create_resource_object("window", window_id)
 
 
 def get_current_window() -> Optional[Window]:
-    window_id = _get_current_window_id()
-    if window_id is None:
-        return None
-    else:
-        return _get_window(window_id)
+    """
+    Returns the current window, or None if no window is active.
+    """
+    try:
+        window_id = _get_current_window_id()
+        if window_id is None:
+            return None
+        else:
+            return _get_window(window_id)
+    except Xlib.error.ConnectionClosedError:
+        # when the X server closes the connection, we should exit
+        # note that stdio is probably closed at this point, so we can't print anything (causes OSError)
+        try:
+            logger.warning("X server closed connection, exiting")
+        except OSError:
+            pass
+        raise FatalError()
+
 
 # Things that can lead to unknown cls/name:
 #  - (cls+name) Empty desktop in xfce (no window focused)
@@ -46,12 +61,14 @@ def get_current_window() -> Optional[Window]:
 
 
 def get_window_name(window: Window) -> str:
-    """ After some annoying debugging I resorted to pretty much copying selfspy.
-        Source: https://github.com/gurgeh/selfspy/blob/8a34597f81000b3a1be12f8cde092a40604e49cf/selfspy/sniff_x.py#L165 """
+    """After some annoying debugging I resorted to pretty much copying selfspy.
+    Source: https://github.com/gurgeh/selfspy/blob/8a34597f81000b3a1be12f8cde092a40604e49cf/selfspy/sniff_x.py#L165"""
     try:
         d = window.get_full_property(NET_WM_NAME, UTF8_STRING)
     except Xlib.error.XError as e:
-        logger.warning("Unable to get window property NET_WM_NAME, got a {} exception from Xlib".format(type(e).__name__))
+        logger.warning(
+            f"Unable to get window property NET_WM_NAME, got a {type(e).__name__} exception from Xlib"
+        )
         # I strongly suspect window.get_wm_name() will also fail and we should return "unknown" right away.
         # But I don't know, so I pass the thing on, for now.
         d = None
@@ -61,19 +78,23 @@ def get_window_name(window: Window) -> str:
         if type(r) == str:
             return r
         else:
-            logger.warning("I don't think this case will ever happen, but not sure so leaving this message here just in case.")
-            return r.decode('latin1')  # WM_NAME with type=STRING.
+            logger.warning(
+                "I don't think this case will ever happen, but not sure so leaving this message here just in case."
+            )
+            return r.decode("latin1")  # WM_NAME with type=STRING.
     else:
         # Fixing utf8 issue on Ubuntu (https://github.com/gurgeh/selfspy/issues/133)
         # Thanks to https://github.com/gurgeh/selfspy/issues/133#issuecomment-142943681
         try:
-            return d.value.decode('utf8')
+            return d.value.decode("utf8")
         except UnicodeError:
-            logger.warning("Failed to decode one or more characters which will be skipped, bytes are: {}".format(d.value))
+            logger.warning(
+                f"Failed to decode one or more characters which will be skipped, bytes are: {d.value}"
+            )
             if isinstance(d.value, bytes):
-                return d.value.decode('utf8', 'ignore')
+                return d.value.decode("utf8", "ignore")
             else:
-                return d.value.encode('utf8').decode('utf8', 'ignore')
+                return d.value.encode("utf8").decode("utf8", "ignore")
 
 
 def get_window_class(window: Window) -> str:
@@ -92,7 +113,9 @@ def get_window_class(window: Window) -> str:
         try:
             window = window.query_tree().parent
         except Xlib.error.XError as e:
-            logger.warning("Unable to get window query_tree().parent, got a {} exception from Xlib".format(type(e).__name__))
+            logger.warning(
+                f"Unable to get window query_tree().parent, got a {type(e).__name__} exception from Xlib"
+            )
             return "unknown"
         if window:
             return get_window_class(window)

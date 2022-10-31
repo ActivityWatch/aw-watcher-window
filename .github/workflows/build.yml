@@ -13,8 +13,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-18.04, windows-latest, macOS-latest]
-        python_version: [3.7, 3.9]
+        os: [ubuntu-20.04, windows-latest, macOS-12]
+        python_version: [3.9]
     steps:
     - uses: actions/checkout@v2
       with:
@@ -32,7 +32,7 @@ jobs:
       run: |
         pip install poetry
         source venv/bin/activate || source venv/Scripts/activate
-        poetry install
+        make build
     - name: Run tests
       shell: bash
       run: |
@@ -42,7 +42,6 @@ jobs:
       shell: bash
       run: |
         source venv/bin/activate || source venv/Scripts/activate
-        pip install pyinstaller==4.3
         make package
     - name: Test package
       shell: bash
@@ -63,7 +62,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v1
       with:
-        python-version: ${{ matrix.python_version }}
+        python-version: 3.9
     - name: Create virtualenv
       shell: bash
       run: |
@@ -73,7 +72,7 @@ jobs:
       run: |
         pip install poetry
         source venv/bin/activate || source venv/Scripts/activate
-        poetry install
+        make build
     - name: Typecheck
       shell: bash
       run: |

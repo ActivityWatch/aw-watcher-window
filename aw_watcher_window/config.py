@@ -2,12 +2,11 @@ import argparse
 
 from aw_core.config import load_config_toml
 
-
 default_config = """
 [aw-watcher-window]
 exclude_title = false
 poll_time = 1.0
-strategy_macos = "jxa"
+strategy_macos = "swift"
 """.strip()
 
 
@@ -23,8 +22,10 @@ def parse_args():
     default_strategy_macos = config["strategy_macos"]
 
     parser = argparse.ArgumentParser(
-        "A cross platform window watcher for Activitywatch.\nSupported on: Linux (X11), macOS and Windows."
+        description="A cross platform window watcher for Activitywatch.\nSupported on: Linux (X11), macOS and Windows."
     )
+    parser.add_argument("--host", dest="host")
+    parser.add_argument("--port", dest="port")
     parser.add_argument("--testing", dest="testing", action="store_true")
     parser.add_argument(
         "--exclude-title",
@@ -40,7 +41,7 @@ def parse_args():
         "--strategy",
         dest="strategy",
         default=default_strategy_macos,
-        choices=["jxa", "applescript"],
+        choices=["jxa", "applescript", "swift"],
         help="(macOS only) strategy to use for retrieving the active window",
     )
     parsed_args = parser.parse_args()

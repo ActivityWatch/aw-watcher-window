@@ -9,7 +9,7 @@ license = "MPL-2.0"
 aw-watcher-window = "aw_watcher_window:main"
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = "^3.8,<3.11"
 aw-client = "^0.5"
 python-xlib = {version = "*", platform = "linux"}
 pypiwin32 = {version = "223", platform = "win32"}
@@ -19,10 +19,10 @@ pyobjc-framework-CoreText = {version = "*", platform="darwin"}
 pyobjc-framework-OSAKit = {version = "*", platform="darwin"}
 
 [tool.poetry.dev-dependencies]
-pytest = "^6.0"
+pytest = "^7.0"
 mypy = "*"
 macholib = {version = "*", platform = "darwin"}  # Needed for pyinstaller
-pyinstaller = {version = "*", optional = true}
+pyinstaller = {version = "*"}
 
 [build-system]
 requires = ["poetry_core>=0.12"]
