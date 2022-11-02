@@ -110,6 +110,10 @@ func log(_ msg: String) {
   print("\(logPrefix("INFO")) \(msg)")
 }
 
+func error(_ msg: String) {
+  print("\(logPrefix("ERROR")) \(msg)")
+}
+
 // Placeholder values, set in start() from CLI arguments
 var baseurl = "http://localhost:5600"
 // NOTE: this differs from the hostname we get from Python, here we get `.local`, but in Python we get `.localdomain`
@@ -261,6 +265,14 @@ class MainThing {
   var observer: AXObserver?
   var oldWindow: AXUIElement?
 
+  // list of chrome equivalent browsers
+  let CHROME_BROWSERS = [
+    "Google Chrome",
+    "Google Chrome Canary",
+    "Chromium",
+    "Brave Browser",
+  ]
+
   func windowTitleChanged(
     _ axObserver: AXObserver,
     axElement: AXUIElement,
@@ -277,15 +289,7 @@ class MainThing {
 
     var data = NetworkMessage(app: frontmost.localizedName!, title: windowTitle as? String ?? "")
 
-    // list of chrome equivalent browsers
-    let chromeBrowsers = [
-      "Google Chrome",
-      "Google Chrome Canary",
-      "Chromium",
-      "Brave Browser",
-    ]
-
-    if chromeBrowsers.contains(frontmost.localizedName!) {
+    if CHROME_BROWSERS.contains(frontmost.localizedName!) {
       debug("Chrome browser detected, extracting URL and title")
 
       let chromeObject: ChromeProtocol = SBApplication.init(bundleIdentifier: bundleIdentifier)!
@@ -297,7 +301,14 @@ class MainThing {
         data = NetworkMessage(app: "", title: "")
       } else {
         data.url = activeTab.URL
-        if let title = activeTab.title { data.title = title }
+
+        // the tab title is more accurate and often different than the window title
+        // however, in some cases the binary does not have the right permissions to read
+        // the title properly and will return a blank string
+
+        if let tabTitle = activeTab.title {
+          if(tabTitle != "") { data.title = tabTitle }
+        }
       }
     } else if frontmost.localizedName == "Safari" {
       debug("Safari browser detected, extracting URL and title")
@@ -309,7 +320,12 @@ class MainThing {
 
       // Safari doesn't allow incognito mode to be inspected, so we do not know if we should hide the url
       data.url = activeTab.URL
-      if let title = activeTab.name { data.title = title }
+
+      // comment above applies here as well
+      if let tabTitle = activeTab.name {
+        if tabTitle != "" { data.title = tabTitle }
+      }
+
     }
 
     let heartbeat = Heartbeat(timestamp: nowTime, data: data)
