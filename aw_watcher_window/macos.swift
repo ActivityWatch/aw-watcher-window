@@ -103,15 +103,18 @@ let logLevel = ProcessInfo.processInfo.environment["LOG_LEVEL"]?.uppercased() ??
 func debug(_ msg: String) {
   if(logLevel == "DEBUG") {
     print("\(logPrefix("DEBUG")) \(msg)")
+    fflush(stdout)
   }
 }
 
 func log(_ msg: String) {
   print("\(logPrefix("INFO")) \(msg)")
+  fflush(stdout)
 }
 
 func error(_ msg: String) {
   print("\(logPrefix("ERROR")) \(msg)")
+  fflush(stdout)
 }
 
 // Placeholder values, set in start() from CLI arguments
