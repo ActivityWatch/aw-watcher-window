@@ -314,7 +314,10 @@ class MainThing {
         // the title properly and will return a blank string
 
         if let tabTitle = activeTab.title {
-          if(tabTitle != "") { data.title = tabTitle }
+          if(tabTitle != "" && data.title != tabTitle) {
+            error("tab title diff: \(tabTitle), window title: \(data.title ?? "")")
+            data.title = tabTitle
+          }
         }
       }
     } else if frontmost.localizedName == "Safari" {
@@ -330,9 +333,11 @@ class MainThing {
 
       // comment above applies here as well
       if let tabTitle = activeTab.name {
-        if tabTitle != "" { data.title = tabTitle }
+        if tabTitle != "" && data.title != tabTitle {
+          error("tab title diff: \(tabTitle), window title: \(data.title ?? "")")
+          data.title = tabTitle
+        }
       }
-
     }
 
     let heartbeat = Heartbeat(timestamp: nowTime, data: data)
