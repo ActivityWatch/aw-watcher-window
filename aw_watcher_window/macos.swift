@@ -281,7 +281,11 @@ class MainThing {
     axElement: AXUIElement,
     notification: CFString
   ) {
-    let frontmost = NSWorkspace.shared.frontmostApplication!
+    guard let frontmost = NSWorkspace.shared.frontmostApplication else {
+      log("Failed to get frontmost application from window title notification")
+      return
+    }
+
     let bundleIdentifier = frontmost.bundleIdentifier!
 
     // calculate now before executing any scripting since that can take some time
@@ -363,7 +367,11 @@ class MainThing {
       )
     }
 
-    let frontmost = NSWorkspace.shared.frontmostApplication!
+    guard let frontmost = NSWorkspace.shared.frontmostApplication else {
+      log("Failed to get frontmost application from app change notification")
+      return
+    }
+
     let pid = frontmost.processIdentifier
     let focusedApp = AXUIElementCreateApplication(pid)
 
