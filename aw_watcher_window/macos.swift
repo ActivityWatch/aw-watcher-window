@@ -286,7 +286,10 @@ class MainThing {
       return
     }
 
-    let bundleIdentifier = frontmost.bundleIdentifier!
+    guard let bundleIdentifier = frontmost.bundleIdentifier else {
+      log("Failed to get bundle identifier from frontmost application")
+      return
+    }
 
     // calculate now before executing any scripting since that can take some time
     let nowTime = Date.now
