@@ -1,32 +1,34 @@
 from typing import Optional
 
-import wmi
+import os
+import time
+
 import win32gui
+import win32api
 import win32process
-
-c = wmi.WMI()
-
-"""
-Much of this derived from: http://stackoverflow.com/a/14973422/965332
-"""
 
 def get_app_path(hwnd) -> Optional[str]:
     """Get application path given hwnd."""
     path = None
+
     _, pid = win32process.GetWindowThreadProcessId(hwnd)
-    for p in c.query('SELECT ExecutablePath FROM Win32_Process WHERE ProcessId = %s' % str(pid)):
-        path = p.ExecutablePath
-        break
+    process = win32api.OpenProcess(0x0400, False, pid) # PROCESS_QUERY_INFORMATION = 0x0400
+
+    try:
+        path = win32process.GetModuleFileNameEx(process, 0)
+    finally:
+        win32api.CloseHandle(process)
+
     return path
 
 def get_app_name(hwnd) -> Optional[str]:
     """Get application filename given hwnd."""
-    name = None
-    _, pid = win32process.GetWindowThreadProcessId(hwnd)
-    for p in c.query('SELECT Name FROM Win32_Process WHERE ProcessId = %s' % str(pid)):
-        name = p.Name
-        break
-    return name
+    path = get_app_path(hwnd)
+
+    if path is None:
+        return None
+    
+    return os.path.basename(path)
 
 def get_window_title(hwnd):
     return win32gui.GetWindowText(hwnd)
@@ -37,6 +39,8 @@ def get_active_window_handle():
 
 
 if __name__ == "__main__":
-    hwnd = get_active_window_handle()
-    print("Title:", get_window_title(hwnd))
-    print("App:", get_app_name(hwnd))
+    while True:
+        hwnd = get_active_window_handle()
+        print("Title:", get_window_title(hwnd))
+        print("App:", get_app_name(hwnd))
+        time.sleep(1.0)
