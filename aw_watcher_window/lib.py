@@ -50,7 +50,7 @@ def get_current_window_windows() -> Optional[dict]:
     return {"app": app, "title": title}
 
 
-def get_current_window(strategy: str = None) -> Optional[dict]:
+def get_current_window(strategy: Optional[str] = None) -> Optional[dict]:
     """
     :raises FatalError: if a fatal error occurs (e.g. unsupported platform, X server closed)
     """
