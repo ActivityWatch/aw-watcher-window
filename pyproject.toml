@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "aw-watcher-window"
 version = "0.2.0"
-description = ""
+description = "Window watcher for ActivityWatch"
 authors = ["Erik Bjäreholt <erik@bjareho.lt>"]
 license = "MPL-2.0"
 
@@ -13,7 +13,6 @@ python = "^3.8,<3.11"
 aw-client = "^0.5"
 python-xlib = {version = "*", platform = "linux"}
 pypiwin32 = {version = "223", platform = "win32"}
-wmi = {version = "*", platform = "win32"}
 pyobjc-framework-ApplicationServices = { version = "*", platform="darwin"}
 pyobjc-framework-CoreText = {version = "*", platform="darwin"}
 pyobjc-framework-OSAKit = {version = "*", platform="darwin"}
