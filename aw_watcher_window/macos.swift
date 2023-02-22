@@ -103,15 +103,18 @@ let logLevel = ProcessInfo.processInfo.environment["LOG_LEVEL"]?.uppercased() ??
 func debug(_ msg: String) {
   if(logLevel == "DEBUG") {
     print("\(logPrefix("DEBUG")) \(msg)")
+    fflush(stdout)
   }
 }
 
 func log(_ msg: String) {
   print("\(logPrefix("INFO")) \(msg)")
+  fflush(stdout)
 }
 
 func error(_ msg: String) {
   print("\(logPrefix("ERROR")) \(msg)")
+  fflush(stdout)
 }
 
 // Placeholder values, set in start() from CLI arguments
@@ -278,8 +281,15 @@ class MainThing {
     axElement: AXUIElement,
     notification: CFString
   ) {
-    let frontmost = NSWorkspace.shared.frontmostApplication!
-    let bundleIdentifier = frontmost.bundleIdentifier!
+    guard let frontmost = NSWorkspace.shared.frontmostApplication else {
+      log("Failed to get frontmost application from window title notification")
+      return
+    }
+
+    guard let bundleIdentifier = frontmost.bundleIdentifier else {
+      log("Failed to get bundle identifier from frontmost application")
+      return
+    }
 
     // calculate now before executing any scripting since that can take some time
     let nowTime = Date.now
@@ -307,7 +317,10 @@ class MainThing {
         // the title properly and will return a blank string
 
         if let tabTitle = activeTab.title {
-          if(tabTitle != "") { data.title = tabTitle }
+          if(tabTitle != "" && data.title != tabTitle) {
+            error("tab title diff: \(tabTitle), window title: \(data.title ?? "")")
+            data.title = tabTitle
+          }
         }
       }
     } else if frontmost.localizedName == "Safari" {
@@ -323,9 +336,11 @@ class MainThing {
 
       // comment above applies here as well
       if let tabTitle = activeTab.name {
-        if tabTitle != "" { data.title = tabTitle }
+        if tabTitle != "" && data.title != tabTitle {
+          error("tab title diff: \(tabTitle), window title: \(data.title ?? "")")
+          data.title = tabTitle
+        }
       }
-
     }
 
     let heartbeat = Heartbeat(timestamp: nowTime, data: data)
@@ -360,7 +375,11 @@ class MainThing {
       )
     }
 
-    let frontmost = NSWorkspace.shared.frontmostApplication!
+    guard let frontmost = NSWorkspace.shared.frontmostApplication else {
+      log("Failed to get frontmost application from app change notification")
+      return
+    }
+
     let pid = frontmost.processIdentifier
     let focusedApp = AXUIElementCreateApplication(pid)
 
