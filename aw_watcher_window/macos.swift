@@ -297,9 +297,17 @@ class MainThing {
     var windowTitle: AnyObject?
     AXUIElementCopyAttributeValue(axElement, kAXTitleAttribute as CFString, &windowTitle)
 
-    var data = NetworkMessage(app: frontmost.localizedName!, title: windowTitle as? String ?? "")
+    let applicationTitle = frontmost.localizedName!
 
-    if CHROME_BROWSERS.contains(frontmost.localizedName!) {
+    // https://github.com/ActivityWatch/aw-watcher-window/issues/85
+    guard applicationTitle != "loginwindow" else {
+      log("loginwindow detected, ignoring")
+      return
+    }
+
+    var data = NetworkMessage(app: applicationTitle, title: windowTitle as? String ?? "")
+
+    if CHROME_BROWSERS.contains(applicationTitle) {
       debug("Chrome browser detected, extracting URL and title")
 
       let chromeObject: ChromeProtocol = SBApplication.init(bundleIdentifier: bundleIdentifier)!
@@ -323,7 +331,7 @@ class MainThing {
           }
         }
       }
-    } else if frontmost.localizedName == "Safari" {
+    } else if applicationTitle == "Safari" {
       debug("Safari browser detected, extracting URL and title")
 
       let safariObject: SafariApplication = SBApplication.init(bundleIdentifier: bundleIdentifier)!
