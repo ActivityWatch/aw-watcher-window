@@ -294,14 +294,15 @@ class MainThing {
     // calculate now before executing any scripting since that can take some time
     let nowTime = Date.now
 
-    var windowTitle: AnyObject?
-    AXUIElementCopyAttributeValue(axElement, kAXTitleAttribute as CFString, &windowTitle)
+    var rawWindowTitle: AnyObject?
+    AXUIElementCopyAttributeValue(axElement, kAXTitleAttribute as CFString, &rawWindowTitle)
+    let windowTitle: String = rawWindowTitle as? String ?? ""
 
     let applicationTitle = frontmost.localizedName!
 
     // https://github.com/ActivityWatch/aw-watcher-window/issues/85
-    guard applicationTitle != "loginwindow" else {
-      log("loginwindow detected, ignoring")
+    guard applicationTitle != "loginwindow" && windowTitle != "Untitled" else {
+      log("loginwindow or Untitled detected, ignoring")
       return
     }
 
