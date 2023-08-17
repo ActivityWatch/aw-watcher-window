@@ -12,7 +12,7 @@ aw-watcher-window = "aw_watcher_window:main"
 python = "^3.8,<3.13"
 aw-client = "^0.5"
 python-xlib = {version = "*", platform = "linux"}
-pypiwin32 = {version = "223", platform = "win32"}
+pywin32 = {version = "306", platform = "win32"}
 pyobjc-framework-ApplicationServices = { version = "*", platform="darwin"}
 pyobjc-framework-CoreText = {version = "*", platform="darwin"}
 pyobjc-framework-OSAKit = {version = "*", platform="darwin"}
