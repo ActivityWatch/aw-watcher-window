@@ -16,11 +16,11 @@ jobs:
         os: [ubuntu-20.04, windows-latest, macOS-12]
         python_version: [3.9]
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         submodules: 'recursive'
     - name: Set up Python
-      uses: actions/setup-python@v1
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python_version }}
     - name: Create virtualenv
@@ -51,7 +51,7 @@ jobs:
       run: |
           dist/aw-watcher-window/aw-watcher-window --help
     - name: Upload package
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: aw-watcher-window-${{ runner.os }}-py${{ matrix.python_version }}
         path: dist/aw-watcher-window
@@ -59,11 +59,11 @@ jobs:
   typecheck:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v3
       with:
         submodules: 'recursive'
     - name: Set up Python
-      uses: actions/setup-python@v1
+      uses: actions/setup-python@v4
       with:
         python-version: 3.9
     - name: Create virtualenv
