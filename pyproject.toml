@@ -11,11 +11,14 @@ aw-watcher-window = "aw_watcher_window:main"
 [tool.poetry.dependencies]
 python = "^3.8,<3.13"
 aw-client = "^0.5"
-python-xlib = {version = "*", platform = "linux"}
 pywin32 = {version = "306", platform = "win32"}
 pyobjc-framework-ApplicationServices = { version = "*", platform="darwin"}
 pyobjc-framework-CoreText = {version = "*", platform="darwin"}
 pyobjc-framework-OSAKit = {version = "*", platform="darwin"}
+
+# locked due to https://github.com/python-xlib/python-xlib/pull/242 leading to 100% CPU stalls
+# see: https://github.com/ActivityWatch/aw-watcher-window/issues/89
+python-xlib = {version = "0.31", platform = "linux"}
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.0"
