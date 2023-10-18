@@ -18,6 +18,7 @@ pyobjc-framework-OSAKit = {version = "*", platform="darwin"}
 
 # locked due to https://github.com/python-xlib/python-xlib/pull/242 leading to 100% CPU stalls
 # see: https://github.com/ActivityWatch/aw-watcher-window/issues/89
+# also locked in aw-watcher-afk
 python-xlib = {version = "0.31", platform = "linux"}
 
 [tool.poetry.dev-dependencies]
