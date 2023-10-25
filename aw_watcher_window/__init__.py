@@ -1,3 +1,3 @@
-from . import lib
-
 from .main import main
+
+__all__ = ["main"]

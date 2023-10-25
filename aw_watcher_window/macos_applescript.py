@@ -1,6 +1,3 @@
-import os
-import subprocess
-from subprocess import PIPE
 from typing import Dict
 from Foundation import NSAppleScript
 

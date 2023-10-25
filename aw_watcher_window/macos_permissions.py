@@ -1,19 +1,24 @@
 import logging
+from multiprocessing import Process
 
 logger = logging.getLogger(__name__)
 
 
 def background_ensure_permissions() -> None:
-    from multiprocessing import Process
-
     permission_process = Process(target=ensure_permissions, args=(()))
     permission_process.start()
     return
 
 
 def ensure_permissions() -> None:
-    from ApplicationServices import AXIsProcessTrusted
-    from AppKit import NSAlert, NSAlertFirstButtonReturn, NSWorkspace, NSURL
+    # noreorder
+    from AppKit import (  # fmt: skip
+        NSURL,
+        NSAlert,
+        NSAlertFirstButtonReturn,
+        NSWorkspace,
+    )
+    from ApplicationServices import AXIsProcessTrusted  # fmt: skip
 
     accessibility_permissions = AXIsProcessTrusted()
     if not accessibility_permissions:
@@ -25,9 +30,9 @@ def ensure_permissions() -> None:
         alert.setMessageText_(title)
         alert.setInformativeText_(info)
 
-        ok_button = alert.addButtonWithTitle_("Open accessibility settings")
-
+        alert.addButtonWithTitle_("Open accessibility settings")
         alert.addButtonWithTitle_("Close")
+
         choice = alert.runModal()
         if choice == NSAlertFirstButtonReturn:
             NSWorkspace.sharedWorkspace().openURL_(

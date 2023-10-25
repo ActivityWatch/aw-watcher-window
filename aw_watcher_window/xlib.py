@@ -75,7 +75,7 @@ def get_window_name(window: Window) -> str:
     if d is None or d.format != 8:
         # Fallback.
         r = window.get_wm_name()
-        if type(r) == str:
+        if isinstance(r, str):
             return r
         else:
             logger.warning(
