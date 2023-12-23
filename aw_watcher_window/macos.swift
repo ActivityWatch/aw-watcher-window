@@ -227,11 +227,11 @@ func sendHeartbeat(_ heartbeat: Heartbeat) {
           // more info: https://github.com/ActivityWatch/aw-watcher-window/pull/69
           // we don't *think* this millisecond subtraction is necessary, but it may be:
           // https://github.com/ActivityWatch/aw-watcher-window/pull/69#discussion_r987064282
-          timestamp: heartbeat.timestamp - 1.0/1000.0,
+          timestamp: heartbeat.timestamp - 0.001,
           data: oldHeartbeat!.data
         )
 
-        try await sendHeartbeatSingle(refreshedOldHeartbeat, pulsetime: timeSinceLastHeartbeat)
+        try await sendHeartbeatSingle(refreshedOldHeartbeat, pulsetime: timeSinceLastHeartbeat + 1)
       } catch {
         log("Failed to send old heartbeat: \(error)")
         return
@@ -239,8 +239,8 @@ func sendHeartbeat(_ heartbeat: Heartbeat) {
     }
 
     do {
-      let since_last_seconds = heartbeat.timestamp.timeIntervalSince(heartbeat.timestamp) + 1
-      try await sendHeartbeatSingle(heartbeat, pulsetime: since_last_seconds)
+      let since_last_seconds = oldHeartbeat != nil ? heartbeat.timestamp.timeIntervalSince(oldHeartbeat!.timestamp) : 0
+      try await sendHeartbeatSingle(heartbeat, pulsetime: since_last_seconds + 1)
     } catch {
       log("Failed to send heartbeat: \(error)")
       return
