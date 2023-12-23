@@ -39,7 +39,12 @@ def get_current_window_windows() -> Optional[dict]:
     from . import windows
 
     window_handle = windows.get_active_window_handle()
-    app = windows.get_app_name(window_handle)
+    try:
+        app = windows.get_app_name(window_handle)
+    except Exception:  # TODO: narrow down the exception
+        # try with wmi method
+        app = windows.get_app_name_wmi(window_handle)
+
     title = windows.get_window_title(window_handle)
 
     if app is None:
