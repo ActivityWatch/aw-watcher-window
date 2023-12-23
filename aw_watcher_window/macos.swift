@@ -177,6 +177,9 @@ func start() {
   )
 
   main.focusedAppChanged()
+
+  // Start the polling timer
+  main.pollingTimer = Timer.scheduledTimer(timeInterval: 10.0, target: main, selector: #selector(main.pollActiveWindow), userInfo: nil, repeats: true)
 }
 
 // TODO might be better to have the python wrapper create this before launching the swift application
@@ -267,6 +270,7 @@ func sendHeartbeatSingle(_ heartbeat: Heartbeat, pulsetime: Double) async throws
 class MainThing {
   var observer: AXObserver?
   var oldWindow: AXUIElement?
+  var pollingTimer: Timer?
 
   // list of chrome equivalent browsers
   let CHROME_BROWSERS = [
@@ -275,6 +279,29 @@ class MainThing {
     "Chromium",
     "Brave Browser",
   ]
+
+  @objc func pollActiveWindow() {
+    debug("Polling active window")
+
+    guard let frontmost = NSWorkspace.shared.frontmostApplication else {
+      log("Failed to get frontmost application from polling")
+      return
+    }
+
+    let pid = frontmost.processIdentifier
+    let focusedApp = AXUIElementCreateApplication(pid)
+
+    var focusedWindow: AnyObject?
+    AXUIElementCopyAttributeValue(focusedApp, kAXFocusedWindowAttribute as CFString, &focusedWindow)
+
+    if focusedWindow != nil {
+      focusedWindowChanged(observer!, window: focusedWindow as! AXUIElement)
+    }
+  }
+
+  deinit {
+    pollingTimer?.invalidate()
+  }
 
   func windowTitleChanged(
     _ axObserver: AXObserver,
