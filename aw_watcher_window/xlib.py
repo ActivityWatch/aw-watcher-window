@@ -73,15 +73,24 @@ def get_window_name(window: Window) -> str:
         # But I don't know, so I pass the thing on, for now.
         d = None
     if d is None or d.format != 8:
-        # Fallback.
-        r = window.get_wm_name()
-        if isinstance(r, str):
-            return r
-        else:
-            logger.warning(
-                "I don't think this case will ever happen, but not sure so leaving this message here just in case."
-            )
-            return r.decode("latin1")  # WM_NAME with type=STRING.
+        try:
+            # Fallback.
+            r = window.get_wm_name()
+            if isinstance(r, str):
+                return r
+            else:
+                logger.warning(
+                    "I don't think this case will ever happen, but not sure so leaving this message here just in case."
+                )
+                return r.decode("latin1")  # WM_NAME with type=STRING.
+        except Xlib.error.BadWindow as e:
+            # I comment on the log, the number of messages that pop up is very annoying
+            # Also, it does not give much information about the error
+            # But I leave it in case someone sees it useful
+            # logger.warning(
+            #     f"Unable to get window property WM_NAME, got a {type(e).__name__} exception from Xlib"
+            # )
+            return "unknown"
     else:
         # Fixing utf8 issue on Ubuntu (https://github.com/gurgeh/selfspy/issues/133)
         # Thanks to https://github.com/gurgeh/selfspy/issues/133#issuecomment-142943681
@@ -112,6 +121,14 @@ def get_window_class(window: Window) -> str:
         logger.warning("Code made an unclear branch")
         try:
             window = window.query_tree().parent
+        except Xlib.error.BadWindow:
+            # I comment on the log, the number of messages that pop up is very annoying
+            # Also, it does not give much information about the error
+            # But I leave it in case someone sees it useful
+            # logger.warning(
+            #     "Unable to get window query_tree().parent, got a BadWindow exception."
+            # )
+            return "unknown"
         except Xlib.error.XError as e:
             logger.warning(
                 f"Unable to get window query_tree().parent, got a {type(e).__name__} exception from Xlib"
