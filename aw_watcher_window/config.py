@@ -19,6 +19,7 @@ def parse_args():
 
     default_poll_time = config["poll_time"]
     default_exclude_title = config["exclude_title"]
+    default_exclude_titles = config["exclude_titles"]
     default_strategy_macos = config["strategy_macos"]
 
     parser = argparse.ArgumentParser(
@@ -32,6 +33,13 @@ def parse_args():
         dest="exclude_title",
         action="store_true",
         default=default_exclude_title,
+    )
+    parser.add_argument(
+        "--exclude-titles",
+        dest="exclude_titles",
+        nargs='+',
+        default=default_exclude_titles,
+        help="List of window titles or regular expression patterns to exclude from tracking. Can specify multiple titles."
     )
     parser.add_argument("--verbose", dest="verbose", action="store_true")
     parser.add_argument(
