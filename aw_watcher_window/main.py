@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -92,10 +93,11 @@ def main():
                 poll_time=args.poll_time,
                 strategy=args.strategy,
                 exclude_title=args.exclude_title,
+                exclude_titles=args.exclude_titles,
             )
 
 
-def heartbeat_loop(client, bucket_id, poll_time, strategy, exclude_title=False):
+def heartbeat_loop(client, bucket_id, poll_time, strategy, exclude_title=False, exclude_titles=[]):
     while True:
         if os.getppid() == 1:
             logger.info("window-watcher stopped because parent process died")
@@ -128,6 +130,12 @@ def heartbeat_loop(client, bucket_id, poll_time, strategy, exclude_title=False):
         if current_window is None:
             logger.debug("Unable to fetch window, trying again on next poll")
         else:
+            if exclude_titles:
+                for title in exclude_titles:
+                    pattern = re.compile(re.escape(title), re.IGNORECASE)
+                    if pattern.search(current_window["title"]):
+                        current_window["title"] = "excluded"
+
             if exclude_title:
                 current_window["title"] = "excluded"
 
