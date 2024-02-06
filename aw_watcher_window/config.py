@@ -5,6 +5,7 @@ from aw_core.config import load_config_toml
 default_config = """
 [aw-watcher-window]
 exclude_title = false
+exclude_titles = []
 poll_time = 1.0
 strategy_macos = "swift"
 """.strip()
