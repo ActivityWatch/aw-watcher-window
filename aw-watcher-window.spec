@@ -23,6 +23,7 @@ exe = EXE(
     a.scripts,
     exclude_binaries=True,
     name="aw-watcher-window",
+    contents_directory=".",
     debug=False,
     strip=False,
     upx=True,
