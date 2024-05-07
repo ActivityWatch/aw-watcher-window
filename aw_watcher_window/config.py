@@ -40,7 +40,7 @@ def parse_args():
         dest="exclude_titles",
         nargs='+',
         default=default_exclude_titles,
-        help="List of window titles or regular expression patterns to exclude from tracking. Can specify multiple titles."
+        help="List of regular expression patterns to exclude from tracking. Each pattern can match any part of a window title. Use standard regex syntax. For example, to exclude windows containing 'Game', simply use 'Game'. Can specify multiple patterns."
     )
     parser.add_argument("--verbose", dest="verbose", action="store_true")
     parser.add_argument(

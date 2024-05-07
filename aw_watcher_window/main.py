@@ -130,8 +130,8 @@ def heartbeat_loop(client, bucket_id, poll_time, strategy, exclude_title=False, 
         if current_window is None:
             logger.debug("Unable to fetch window, trying again on next poll")
         else:
-            for title in exclude_titles:
-                pattern = re.compile(re.escape(title), re.IGNORECASE)
+            patterns = [re.compile(re.escape(title), re.IGNORECASE) for title in exclude_titles]
+            for pattern in patterns:
                 if pattern.search(current_window["title"]):
                     current_window["title"] = "excluded"
 
