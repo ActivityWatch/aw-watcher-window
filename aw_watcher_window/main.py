@@ -23,14 +23,12 @@ log_level = os.environ.get("LOG_LEVEL")
 if log_level:
     logger.setLevel(logging.__getattribute__(log_level.upper()))
 
-
 def kill_process(pid):
     logger.info("Killing process {}".format(pid))
     try:
         os.kill(pid, signal.SIGTERM)
     except ProcessLookupError:
         logger.info("Process {} already dead".format(pid))
-
 
 def main():
     args = parse_args()
@@ -93,9 +91,8 @@ def main():
                 poll_time=args.poll_time,
                 strategy=args.strategy,
                 exclude_title=args.exclude_title,
-                exclude_titles=[re.compile(re.escape(title), re.IGNORECASE) for title in args.exclude_titles]
+                exclude_titles=[try: re.compile(title, re.IGNORECASE) except re.error: re.compile(re.escape(title), re.IGNORECASE) for title in args.exclude_titles]
             )
-
 
 def heartbeat_loop(client, bucket_id, poll_time, strategy, exclude_title=False, exclude_titles=[]):
     while True:
