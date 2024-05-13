@@ -31,6 +31,13 @@ def kill_process(pid):
     except ProcessLookupError:
         logger.info("Process {} already dead".format(pid))
 
+def try_compile_title_regex(title):
+    try:
+        return re.compile(title, re.IGNORECASE)
+    except re.error:
+        logger.error(f"Invalid regex pattern: {title}")
+        exit(1)
+
 
 def main():
     args = parse_args()
@@ -93,7 +100,7 @@ def main():
                 poll_time=args.poll_time,
                 strategy=args.strategy,
                 exclude_title=args.exclude_title,
-                exclude_titles=[re.compile(re.escape(title), re.IGNORECASE) for title in args.exclude_titles]
+                exclude_titles=[try_compile_title_regex(title) for title in args.exclude_titles if title is not None]
             )
 
 
