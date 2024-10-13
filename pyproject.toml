@@ -9,7 +9,7 @@ license = "MPL-2.0"
 aw-watcher-window = "aw_watcher_window:main"
 
 [tool.poetry.dependencies]
-python = "^3.8,<3.13"
+python = "^3.8"
 aw-client = "^0.5"
 pywin32 = {version = "306", platform = "win32"}
 wmi = {version = "*", platform = "win32"}
@@ -26,7 +26,7 @@ python-xlib = {version = "0.31", platform = "linux"}
 pytest = "^7.0"
 mypy = "*"
 macholib = {version = "*", platform = "darwin"}  # Needed for pyinstaller
-pyinstaller = {version = "*"}
+pyinstaller = {version = "*", python = "^3.8,<3.14"}
 
 [build-system]
 requires = ["poetry-core"]
