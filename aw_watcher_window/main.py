@@ -31,6 +31,7 @@ def kill_process(pid):
     except ProcessLookupError:
         logger.info("Process {} already dead".format(pid))
 
+
 def try_compile_title_regex(title):
     try:
         return re.compile(title, re.IGNORECASE)
@@ -68,8 +69,8 @@ def main():
     client.create_bucket(bucket_id, event_type, queued=True)
 
     logger.info("aw-watcher-window started")
+    client.wait_for_start()
 
-    sleep(1)  # wait for server to start
     with client:
         if sys.platform == "darwin" and args.strategy == "swift":
             logger.info("Using swift strategy, calling out to swift binary")
@@ -100,11 +101,17 @@ def main():
                 poll_time=args.poll_time,
                 strategy=args.strategy,
                 exclude_title=args.exclude_title,
-                exclude_titles=[try_compile_title_regex(title) for title in args.exclude_titles if title is not None]
+                exclude_titles=[
+                    try_compile_title_regex(title)
+                    for title in args.exclude_titles
+                    if title is not None
+                ],
             )
 
 
-def heartbeat_loop(client, bucket_id, poll_time, strategy, exclude_title=False, exclude_titles=[]):
+def heartbeat_loop(
+    client, bucket_id, poll_time, strategy, exclude_title=False, exclude_titles=[]
+):
     while True:
         if os.getppid() == 1:
             logger.info("window-watcher stopped because parent process died")
