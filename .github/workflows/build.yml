@@ -8,13 +8,12 @@ on:
 
 jobs:
   test:
-    name: test on ${{ matrix.os }} (py-${{ matrix.python_version }})
+    name: test on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-20.04, windows-latest, macOS-12]
-        python_version: [3.9]
     steps:
     - uses: actions/checkout@v3
       with:
@@ -22,7 +21,8 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: ${{ matrix.python_version }}
+        python-version-file: pyproject.toml
+        cache: 'poetry'
     - name: Create virtualenv
       shell: bash
       run: |
@@ -31,9 +31,9 @@ jobs:
       shell: bash
       run: |
         # we need poetry==1.3.2
-        # due to: https://github.com/python-poetry/poetry/issues/7611 
+        # due to: https://github.com/python-poetry/poetry/issues/7611
         # seen in: https://github.com/ActivityWatch/aw-watcher-window/actions/runs/5891369412/job/15978283144
-        pip install poetry==1.3.2  
+        pipx install poetry==1.3.2
         source venv/bin/activate || source venv/Scripts/activate
         make build
     - name: Run tests
@@ -53,7 +53,7 @@ jobs:
     - name: Upload package
       uses: actions/upload-artifact@v3
       with:
-        name: aw-watcher-window-${{ runner.os }}-py${{ matrix.python_version }}
+        name: aw-watcher-window-${{ runner.os }}
         path: dist/aw-watcher-window
 
   typecheck:
