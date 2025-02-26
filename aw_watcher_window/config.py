@@ -22,6 +22,7 @@ def parse_args():
     default_exclude_title = config["exclude_title"]
     default_exclude_titles = config["exclude_titles"]
     default_strategy_macos = config["strategy_macos"]
+    default_always_track_apps = config.get("always_track_apps", [])  # Безопасно получаем значение
 
     parser = argparse.ArgumentParser(
         description="A cross platform window watcher for Activitywatch.\nSupported on: Linux (X11), macOS and Windows."
@@ -53,5 +54,13 @@ def parse_args():
         choices=["jxa", "applescript", "swift"],
         help="(macOS only) strategy to use for retrieving the active window",
     )
+    parser.add_argument(
+        "--always-track-apps",
+        dest="always_track_apps",
+        nargs='+',
+        default=default_always_track_apps,
+        help="List of applications where window titles should always be tracked."
+    )
+
     parsed_args = parser.parse_args()
     return parsed_args
