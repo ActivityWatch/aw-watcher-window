@@ -360,6 +360,9 @@ class MainThing {
     } else if FIREFOX_BROWSERS.contains(frontmost.localizedName!) {
       debug("Firefox-based browser detected, extracting URL using AppleScript")
 
+      // WARNING: This AppleScript relies on Firefox's specific UI hierarchy:
+      // window 1 -> group 1 -> toolbar "Navigation" -> combo box 1 (URL bar)
+      // This is fragile and may break if Firefox changes its UI structure
       func getFirefoxURL(_ browserName: String) -> String? {
         let script = """
         tell application "System Events"
