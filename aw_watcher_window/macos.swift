@@ -1,6 +1,5 @@
 import Cocoa
 import ScriptingBridge
-import Foundation
 
 @objc protocol ChromeTab {
   @objc optional var URL: String { get }
