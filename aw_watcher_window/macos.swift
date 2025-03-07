@@ -1,5 +1,6 @@
 import Cocoa
 import ScriptingBridge
+import Foundation
 
 @objc protocol ChromeTab {
   @objc optional var URL: String { get }
@@ -280,6 +281,12 @@ class MainThing {
     "Brave Browser",
   ]
 
+  let FIREFOX_BROWSERS = [
+    "Firefox",
+    "Firefox Developer Edition",
+    "Firefox Nightly",
+  ]
+
   @objc func pollActiveWindow() {
     debug("Polling active window")
 
@@ -327,7 +334,7 @@ class MainThing {
     var data = NetworkMessage(app: frontmost.localizedName!, title: windowTitle as? String ?? "")
 
     if CHROME_BROWSERS.contains(frontmost.localizedName!) {
-      debug("Chrome browser detected, extracting URL and title")
+      debug("Chrome-based browser detected, extracting URL and title")
 
       let chromeObject: ChromeProtocol = SBApplication.init(bundleIdentifier: bundleIdentifier)!
 
@@ -345,11 +352,42 @@ class MainThing {
 
         if let tabTitle = activeTab.title {
           if(tabTitle != "" && data.title != tabTitle) {
-            error("tab title diff: \(tabTitle), window title: \(data.title ?? "")")
+            debug("tab title diff: \(tabTitle), window title: \(data.title)")
             data.title = tabTitle
           }
         }
       }
+    } else if FIREFOX_BROWSERS.contains(frontmost.localizedName!) {
+      debug("Firefox-based browser detected, extracting URL using AppleScript")
+
+      func getFirefoxURL(_ browserName: String) -> String? {
+        let script = """
+        tell application "System Events"
+            tell process "\(browserName)"
+                if exists (window 1) then
+                    if exists (toolbar "Navigation" of group 1 of window 1) then
+                        return value of combo box 1 of group 1 of toolbar "Navigation" of group 1 of window 1
+                    end if
+                end if
+            end tell
+        end tell
+        """
+
+        let appleScript = NSAppleScript(source: script)
+        var error: NSDictionary?
+        if let result = appleScript?.executeAndReturnError(&error).stringValue {
+            return result
+        } else if let error = error {
+            error("Failed to get Firefox URL for \(browserName): \(error)")
+            return nil
+        }
+        return nil
+      }
+
+      if let url = getFirefoxURL(frontmost.localizedName!) {
+        data.url = url
+      }
+
     } else if frontmost.localizedName == "Safari" {
       debug("Safari browser detected, extracting URL and title")
 
@@ -364,7 +402,7 @@ class MainThing {
       // comment above applies here as well
       if let tabTitle = activeTab.name {
         if tabTitle != "" && data.title != tabTitle {
-          error("tab title diff: \(tabTitle), window title: \(data.title ?? "")")
+          debug("tab title diff: \(tabTitle), window title: \(data.title)")
           data.title = tabTitle
         }
       }
