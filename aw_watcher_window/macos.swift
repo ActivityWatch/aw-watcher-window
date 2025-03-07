@@ -374,11 +374,11 @@ class MainThing {
         """
 
         let appleScript = NSAppleScript(source: script)
-        var error: NSDictionary?
-        if let result = appleScript?.executeAndReturnError(&error).stringValue {
+        var scriptError: NSDictionary?
+        if let result = appleScript?.executeAndReturnError(&scriptError).stringValue {
             return result
-        } else if let error = error {
-            error("Failed to get Firefox URL for \(browserName): \(error)")
+        } else if let scriptError = scriptError {
+            error("Failed to get Firefox URL for \(browserName): \(scriptError)")
             return nil
         }
         return nil
@@ -387,7 +387,6 @@ class MainThing {
       if let url = getFirefoxURL(frontmost.localizedName!) {
         data.url = url
       }
-
     } else if frontmost.localizedName == "Safari" {
       debug("Safari browser detected, extracting URL and title")
 
