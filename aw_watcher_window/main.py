@@ -106,11 +106,12 @@ def main():
                     for title in args.exclude_titles
                     if title is not None
                 ],
+                always_track_apps=args.always_track_apps,
             )
 
 
 def heartbeat_loop(
-    client, bucket_id, poll_time, strategy, exclude_title=False, exclude_titles=[]
+    client, bucket_id, poll_time, strategy, exclude_title=False, exclude_titles=[], always_track_apps=[]
 ):
     while True:
         if os.getppid() == 1:
@@ -144,12 +145,17 @@ def heartbeat_loop(
         if current_window is None:
             logger.debug("Unable to fetch window, trying again on next poll")
         else:
-            for pattern in exclude_titles:
-                if pattern.search(current_window["title"]):
+            app_name = current_window.get("app", "")
+
+            # Проверяем, не входит ли приложение в список, для которого нельзя менять title
+            if app_name not in always_track_apps:
+                for pattern in exclude_titles:
+                    if pattern.search(current_window["title"]):
+                        current_window["title"] = "excluded"
+
+                if exclude_title:
                     current_window["title"] = "excluded"
 
-            if exclude_title:
-                current_window["title"] = "excluded"
 
             now = datetime.now(timezone.utc)
             current_window_event = Event(timestamp=now, data=current_window)
