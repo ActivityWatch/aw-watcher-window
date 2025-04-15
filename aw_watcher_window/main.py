@@ -147,14 +147,15 @@ def heartbeat_loop(
         else:
             app_name = current_window.get("app", "")
 
-            # Проверяем, не входит ли приложение в список, для которого нельзя менять title
-            if app_name not in always_track_apps:
+            if app_name in always_track_apps:
                 for pattern in exclude_titles:
                     if pattern.search(current_window["title"]):
                         current_window["title"] = "excluded"
 
                 if exclude_title:
                     current_window["title"] = "excluded"
+            else:
+                current_window["title"] = "excluded"
 
 
             now = datetime.now(timezone.utc)
