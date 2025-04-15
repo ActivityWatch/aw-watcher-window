@@ -40,6 +40,17 @@ def try_compile_title_regex(title):
         exit(1)
 
 
+def get_logged_in_user():
+    try:
+        user = subprocess.check_output("who | awk '{print $1}' | head -n 1", shell=True).decode().strip()
+        if not user:
+            raise Exception("No logged in user found")
+        return user
+    except Exception as e:
+        logger.error(f"Failed to get logged in user: {e}")
+        return "unknown"
+
+
 def main():
     args = parse_args()
 
@@ -62,8 +73,8 @@ def main():
     client = ActivityWatchClient(
         "aw-watcher-window", host=args.host, port=args.port, testing=args.testing
     )
-
-    bucket_id = f"{client.client_name}_{client.client_hostname}"
+    username = get_logged_in_user()
+    bucket_id = f"{username}-window_{client.client_hostname}"
     event_type = "currentwindow"
 
     client.create_bucket(bucket_id, event_type, queued=True)
