@@ -6,6 +6,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from time import sleep
+import getpass
 
 from aw_client import ActivityWatchClient
 from aw_core.log import setup_logging
@@ -41,19 +42,50 @@ def try_compile_title_regex(title):
 
 
 def get_logged_in_user():
+    """Возвращает *локального* пользователя, сидящего за физическим рабочим столом (seat0).
+    SSH/PTS‑сессии игнорируются."""
+
+    # 1) Пытаемся через systemd‑logind (самый надёжный способ)
     try:
-        user = subprocess.check_output("who | awk '{print $1}' | head -n 1", shell=True).decode().strip()
-        if not user:
-            raise Exception("No logged in user found")
-        return user
+        seat0 = subprocess.check_output(
+            "loginctl list-sessions --no-legend | awk '$3==\"seat0\" {print $1; exit}'",
+            shell=True,
+        ).decode().strip()
+        if seat0:
+            user = subprocess.check_output(
+                f"loginctl show-session {seat0} -p Name --value",
+                shell=True,
+            ).decode().strip()
+            if user:
+                return user
+    except Exception:
+        pass  # fallback ниже
+
+    # 2) Первая строка `who`, где tty НЕ начинается с pts/ (т.е. не SSH)
+    try:
+        for line in subprocess.check_output("who", shell=True).decode().splitlines():
+            cols = line.split()
+            if len(cols) >= 2 and not cols[1].startswith("pts/"):
+                return cols[0]
+    except Exception:
+        pass
+
+    # 3) Запасной вариант — пользователь, под которым запущен процесс
+    try:
+        return getpass.getuser()
     except Exception as e:
         logger.error(f"Failed to get logged in user: {e}")
         return "unknown"
 
+def running_over_ssh() -> bool:
+    """True, если скрипт запущен из SSH‑сессии (SSH_CLIENT/SSH_TTY)."""
+    return bool(os.environ.get("SSH_CLIENT") or os.environ.get("SSH_TTY"))
 
 def main():
     args = parse_args()
-
+    if running_over_ssh():
+        logger.info("SSH session detected – watcher disabled for remote login")
+        sys.exit(0)
     if sys.platform.startswith("linux") and (
         "DISPLAY" not in os.environ or not os.environ["DISPLAY"]
     ):
