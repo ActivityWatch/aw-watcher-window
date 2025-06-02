@@ -85,7 +85,7 @@ def main():
     args = parse_args()
     if running_over_ssh():
         logger.info("SSH session detected – watcher disabled for remote login")
-        sys.exit(0)
+        raise Exception("SSH session detected – watcher disabled for remote login")
     if sys.platform.startswith("linux") and (
         "DISPLAY" not in os.environ or not os.environ["DISPLAY"]
     ):
