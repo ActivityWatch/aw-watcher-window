@@ -137,8 +137,6 @@ def heartbeat_loop(
             now = datetime.now(timezone.utc)
             current_window_event = Event(timestamp=now, data=current_window)
 
-            logger.info(f"Sending heartbeat: {vars(current_window_event)}")
-
             # Set pulsetime to 1 second more than the poll_time
             # This since the loop takes more time than poll_time
             # due to sleep(poll_time).
