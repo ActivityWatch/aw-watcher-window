@@ -77,7 +77,7 @@ def main():
             client,
             bucket_id,
             poll_time=args.poll_time,
-            strategy=args.strategy,
+            # strategy=args.strategy,
 
             exclude_title=args.exclude_title,
             exclude_titles=[
