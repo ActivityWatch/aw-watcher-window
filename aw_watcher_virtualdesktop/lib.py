@@ -30,19 +30,33 @@ def get_current_window_windows() -> Optional[dict]:
     from . import windows
 
     window_handle = windows.get_active_window_handle()
-    try:
-        app = windows.get_app_name(window_handle)
-    except Exception:  # TODO: narrow down the exception
-        # try with wmi method
-        app = windows.get_app_name_wmi(window_handle)
-
-    title = windows.get_window_title(window_handle)
-
-    if app is None:
+    app = None
+    title = None
+    # まず有効なハンドルかチェック
+    if not window_handle or window_handle == 0:
         app = "unknown"
-    if title is None:
         title = "unknown"
-
+    else:
+        # app名取得
+        try:
+            app = windows.get_app_name(window_handle)
+        except Exception:
+            app = None
+        if not app:
+            try:
+                app = windows.get_app_name_wmi(window_handle)
+            except Exception:
+                app = None
+        # どちらも失敗した場合
+        if not app:
+            app = "unknown"
+        # タイトル取得
+        try:
+            title = windows.get_window_title(window_handle)
+        except Exception:
+            title = None
+        if not title:
+            title = "unknown"
     return {"app": app, "title": title, "virtual_desktop": get_virtual_desktop()}
 
 
