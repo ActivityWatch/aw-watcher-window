@@ -1,32 +1,31 @@
 [tool.poetry]
-name = "aw-watcher-window"
+name = "aw-watcher-virtualdesktop"
 version = "0.2.0"
 description = "Window watcher for ActivityWatch"
 authors = ["Erik Bjäreholt <erik@bjareho.lt>"]
 license = "MPL-2.0"
 
 [tool.poetry.scripts]
-aw-watcher-window = "aw_watcher_window:main"
+aw-watcher-virtualdesktop = "aw_watcher_virtualdesktop:main"
 
 [tool.poetry.dependencies]
 python = "^3.8"
+pytest = "^8.2"
+pytest-cov = "^4.0"
 aw-client = "^0.5.14"
 pywin32 = {version = "306", platform = "win32"}
 wmi = {version = "*", platform = "win32"}
-pyobjc-framework-ApplicationServices = { version = "*", platform="darwin"}
-pyobjc-framework-CoreText = {version = "*", platform="darwin"}
-pyobjc-framework-OSAKit = {version = "*", platform="darwin"}
+comtypes = {version = "*", platform = "win32"}
 
 # locked due to https://github.com/python-xlib/python-xlib/pull/242 leading to 100% CPU stalls
 # see: https://github.com/ActivityWatch/aw-watcher-window/issues/89
 # also locked in aw-watcher-afk
 python-xlib = {version = "0.31", platform = "linux"}
 
-[tool.poetry.dev-dependencies]
+[poetry.group.dev.dependencies]
 pytest = "*"
 mypy = "*"
-macholib = {version = "*", platform = "darwin"}  # Needed for pyinstaller
-pyinstaller = {version = "*", python = "^3.8,<3.14"}
+pyinstaller = { version = "*", python = ">=3.8,<3.14" }
 
 [build-system]
 requires = ["poetry-core"]
