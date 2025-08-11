@@ -21,10 +21,10 @@ def get_current_window_linux() -> Optional[dict]:
         except Exception:
             pid = None
 
-    if cls and "nuke" in cls.lower() and pid:
-        full_path = get_nuke_script_path(pid, name)
-        if full_path:
-            name = full_path
+        if cls and "nuke" in cls.lower() and pid:
+            full_path = get_nuke_script_path(pid, name)
+            if full_path:
+                name = full_path
 
     return {"app": cls, "title": name}
 
