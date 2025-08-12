@@ -16,6 +16,7 @@ wmi = {version = "*", platform = "win32"}
 pyobjc-framework-ApplicationServices = { version = "*", platform="darwin"}
 pyobjc-framework-CoreText = {version = "*", platform="darwin"}
 pyobjc-framework-OSAKit = {version = "*", platform="darwin"}
+psutil = "^5.9"
 
 # locked due to https://github.com/python-xlib/python-xlib/pull/242 leading to 100% CPU stalls
 # see: https://github.com/ActivityWatch/aw-watcher-window/issues/89

@@ -8,6 +8,7 @@ exclude_title = false
 exclude_titles = []
 poll_time = 1.0
 strategy_macos = "swift"
+always_track_apps = "NukeX,Houdini FX"
 """.strip()
 
 
