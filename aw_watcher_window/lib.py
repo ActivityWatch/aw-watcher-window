@@ -1,6 +1,7 @@
 import sys
 from typing import Optional
-
+import psutil
+from .nuke_utils import get_nuke_script_path
 from .exceptions import FatalError
 
 
@@ -15,6 +16,15 @@ def get_current_window_linux() -> Optional[dict]:
     else:
         cls = xlib.get_window_class(window)
         name = xlib.get_window_name(window)
+        try:
+            pid = xlib.get_window_pid(window)
+        except Exception:
+            pid = None
+
+        if cls and "nuke" in cls.lower() and pid:
+            full_path = get_nuke_script_path(pid, name)
+            if full_path:
+                name = full_path
 
     return {"app": cls, "title": name}
 
