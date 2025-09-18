@@ -43,7 +43,17 @@ def get_active_window_handle():
     hwnd = win32gui.GetForegroundWindow()
     return hwnd
 
-
+def get_window_pid(hwnd) -> Optional[int]:
+    """
+    Возвращает PID процесса, которому принадлежит окно hwnd.
+    Работает без прав администратора. Даже если чтение модулей/пути
+    процесса ограничено, извлечение PID через WinAPI остаётся возможным.
+    """
+    try:
+        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+        return int(pid)
+    except Exception:
+        return None
 # WMI-version, used as fallback if win32gui/win32process/win32api fails (such as for "run as admin" processes)
 
 c = wmi.WMI()

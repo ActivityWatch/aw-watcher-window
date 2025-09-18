@@ -1,9 +1,11 @@
 import sys
+import os
 from typing import Optional
 import psutil
 from .nuke_utils import get_nuke_script_path
 from .exceptions import FatalError
-
+from .path_utils import normalize_project_path
+from .houdini_utils import get_houdini_scene_path
 
 def get_current_window_linux() -> Optional[dict]:
     from . import xlib
@@ -46,21 +48,60 @@ def get_current_window_macos(strategy: str) -> Optional[dict]:
 
 
 def get_current_window_windows() -> Optional[dict]:
+    """
+    Windows: возвращаем {"app": <каноническое имя>, "title": <нормализованный путь или 'unknown'/'excluded'>}
+    - Для Nuke: пытаемся вытащить .nk через psutil (cmdline/open_files), иначе из title; нормализуем путь.
+    - Для Houdini: сначала пробуем взять абсолютный .hip* из title; если нет — пробуем psutil; нормализуем.
+    - Для прочих приложений оставляем исходные значения (далее heartbeat_loop решает, исключать ли title).
+    """
     from . import windows
 
-    window_handle = windows.get_active_window_handle()
-    try:
-        app = windows.get_app_name(window_handle)
-    except Exception:  # TODO: narrow down the exception
-        # try with wmi method
-        app = windows.get_app_name_wmi(window_handle)
+    hwnd = windows.get_active_window_handle()
 
-    title = windows.get_window_title(window_handle)
+    try:
+        app = windows.get_app_name(hwnd)
+    except Exception:
+        app = windows.get_app_name_wmi(hwnd)
+
+    title = windows.get_window_title(hwnd)
 
     if app is None:
         app = "unknown"
     if title is None:
         title = "unknown"
+
+    pid = windows.get_window_pid(hwnd)
+
+    lower_app = (app or "").lower()
+
+    if "nuke" in lower_app and pid:
+        canonical_app = "NukeX"
+        try:
+            nuke_path = get_nuke_script_path(pid, title)
+            if nuke_path:
+                title = normalize_project_path(nuke_path)
+        except Exception:
+            pre = title.split(" - ", 1)[0].strip()
+            if pre.lower().endswith(".nk") and os.path.isabs(pre):
+                title = normalize_project_path(pre)
+        return {"app": canonical_app, "title": title}
+
+    if "houdini" in lower_app and pid:
+        canonical_app = "Houdini FX"
+
+        pre = title.split(" - ", 1)[0].strip()
+        if pre.lower().endswith((".hip", ".hiplc", ".hipnc")) and os.path.isabs(pre):
+            title = normalize_project_path(pre)
+            return {"app": canonical_app, "title": title}
+
+        try:
+            hip_path = get_houdini_scene_path(pid, title)
+            if hip_path:
+                title = normalize_project_path(hip_path)
+        except Exception:
+            pass
+
+        return {"app": canonical_app, "title": title}
 
     return {"app": app, "title": title}
 

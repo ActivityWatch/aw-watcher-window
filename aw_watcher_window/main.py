@@ -81,6 +81,32 @@ def running_over_ssh() -> bool:
     """True, если скрипт запущен из SSH‑сессии (SSH_CLIENT/SSH_TTY)."""
     return bool(os.environ.get("SSH_CLIENT") or os.environ.get("SSH_TTY"))
 
+def _normalize_hostname(h: str) -> str:
+    """
+    Нормализуем hostname:
+      - нижний регистр
+      - отбрасываем доменную часть (берём до первой точки)
+    """
+    if not h:
+        return "unknown"
+    h = h.strip().lower()
+    if "." in h:
+        h = h.split(".", 1)[0]
+    return h or "unknown"
+
+
+def _resolve_identity(default_username: str, default_hostname: str) -> tuple[str, str]:
+    """
+    Возвращает (username, hostname) с учётом env-override:
+      AW_USERNAME_OVERRIDE, AW_HOSTNAME_OVERRIDE.
+    Hostname нормализуем под короткий стиль (fx26 и т.п.).
+    """
+    username = os.environ.get("AW_USERNAME_OVERRIDE", "").strip() or default_username
+    hostname_raw = os.environ.get("AW_HOSTNAME_OVERRIDE", "").strip() or default_hostname
+    hostname = _normalize_hostname(hostname_raw)
+    return username, hostname
+
+
 def main():
     args = parse_args()
     if running_over_ssh():
@@ -105,8 +131,18 @@ def main():
     client = ActivityWatchClient(
         "aw-watcher-window", host=args.host, port=args.port, testing=args.testing
     )
-    username = get_logged_in_user()
-    bucket_id = f"{username}-window_{client.client_hostname}"
+
+    username_default = get_logged_in_user()
+    hostname_default = client.client_hostname
+
+    username_eff, hostname_eff = _resolve_identity(username_default, hostname_default)
+
+    try:
+        client.client_hostname = hostname_eff
+    except Exception:
+        pass
+
+    bucket_id = f"{username_eff}-window_{hostname_eff}"
     event_type = "currentwindow"
 
     client.create_bucket(bucket_id, event_type, queued=True)
