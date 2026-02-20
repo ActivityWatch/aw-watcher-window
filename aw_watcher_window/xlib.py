@@ -76,7 +76,9 @@ def get_window_name(window: Window) -> str:
         try:
             # Fallback.
             r = window.get_wm_name()
-            if isinstance(r, str):
+            if r is None:
+                return "unknown"
+            elif isinstance(r, str):
                 return r
             else:
                 logger.warning(
