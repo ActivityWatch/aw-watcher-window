@@ -39,11 +39,20 @@ def get_current_window_windows() -> Optional[dict]:
     from . import windows
 
     window_handle = windows.get_active_window_handle()
+
+    # hwnd 0 means no foreground window (e.g. during UAC prompt, lock screen,
+    # or secure desktop). Return None so heartbeat_loop skips this poll cycle.
+    if not window_handle:
+        return None
+
     try:
         app = windows.get_app_name(window_handle)
-    except Exception:  # TODO: narrow down the exception
-        # try with wmi method
-        app = windows.get_app_name_wmi(window_handle)
+    except Exception:
+        # Fall back to WMI for elevated/admin processes where OpenProcess fails
+        try:
+            app = windows.get_app_name_wmi(window_handle)
+        except Exception:
+            app = None
 
     title = windows.get_window_title(window_handle)
 
