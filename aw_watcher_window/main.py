@@ -72,6 +72,19 @@ def main():
     client.wait_for_start()
 
     with client:
+        # On macOS, the swift strategy uses a native binary that bypasses Python filtering.
+        # Fall back to jxa if title exclusion is configured, so exclude_title/exclude_titles work.
+        if (
+            sys.platform == "darwin"
+            and args.strategy == "swift"
+            and (args.exclude_title or args.exclude_titles)
+        ):
+            logger.warning(
+                "exclude_title/exclude_titles is not supported with the swift strategy; "
+                "falling back to jxa strategy"
+            )
+            args.strategy = "jxa"
+
         if sys.platform == "darwin" and args.strategy == "swift":
             logger.info("Using swift strategy, calling out to swift binary")
             binpath = os.path.join(
