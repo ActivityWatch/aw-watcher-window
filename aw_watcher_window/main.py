@@ -1,6 +1,8 @@
+import json
 import logging
 import os
 import re
+import requests
 import signal
 import subprocess
 import sys
@@ -40,6 +42,34 @@ def try_compile_title_regex(title):
         exit(1)
 
 
+def _patch_client_auth(client, user, password):
+    """Replace aw-client HTTP methods to inject Basic Auth credentials."""
+    from aw_client.client import always_raise_for_request_errors
+
+    auth = requests.auth.HTTPBasicAuth(user, password)
+    _url = client._url
+
+    @always_raise_for_request_errors
+    def _get(self_ref, endpoint, params=None):
+        return requests.get(_url(endpoint), params=params, auth=auth)
+
+    @always_raise_for_request_errors
+    def _post(self_ref, endpoint, data, params=None):
+        headers = {"Content-type": "application/json", "charset": "utf-8"}
+        return requests.post(_url(endpoint), data=bytes(json.dumps(data), "utf8"), headers=headers, params=params, auth=auth)
+
+    @always_raise_for_request_errors
+    def _delete(self_ref, endpoint, data=None):
+        if data is None:
+            data = {}
+        headers = {"Content-type": "application/json"}
+        return requests.delete(_url(endpoint), data=json.dumps(data), headers=headers, auth=auth)
+
+    client._get = lambda endpoint, params=None: _get(client, endpoint, params)
+    client._post = lambda endpoint, data, params=None: _post(client, endpoint, data, params)
+    client._delete = lambda endpoint, data=None: _delete(client, endpoint, data)
+
+
 def main():
     args = parse_args()
 
@@ -62,6 +92,10 @@ def main():
     client = ActivityWatchClient(
         "aw-watcher-window", host=args.host, port=args.port, testing=args.testing
     )
+
+    if args.auth_user and args.auth_password:
+        _patch_client_auth(client, args.auth_user, args.auth_password)
+        logger.info("HTTP Basic Auth enabled for user: %s", args.auth_user)
 
     bucket_id = f"{client.client_name}_{client.client_hostname}"
     event_type = "currentwindow"
