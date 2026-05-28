@@ -14,6 +14,7 @@ from aw_core.models import Event
 from .config import parse_args
 from .exceptions import FatalError
 from .lib import get_current_window
+from .macos_cli import build_swift_command
 from .macos_permissions import background_ensure_permissions
 
 logger = logging.getLogger(__name__)
@@ -80,13 +81,15 @@ def main():
 
             try:
                 p = subprocess.Popen(
-                    [
+                    build_swift_command(
                         binpath,
                         client.server_address,
                         bucket_id,
                         client.client_hostname,
                         client.client_name,
-                    ]
+                        exclude_title=args.exclude_title,
+                        exclude_titles=args.exclude_titles,
+                    )
                 )
                 # terminate swift process when this process dies
                 signal.signal(signal.SIGTERM, lambda *_: kill_process(p.pid))
