@@ -145,8 +145,8 @@ RunLoop.main.run()
 func compileExcludeTitlePattern(_ pattern: String) -> NSRegularExpression {
   do {
     return try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
-  } catch {
-    error("Invalid regex pattern: \(pattern)")
+  } catch let regexError {
+    error("Invalid regex pattern: \(pattern) — \(regexError.localizedDescription)")
     exit(1)
   }
 }
