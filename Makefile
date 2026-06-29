@@ -1,5 +1,7 @@
 .PHONY: build test package clean
 
+MACOSX_DEPLOYMENT_TARGET ?= 14.0
+
 build:
 	poetry install
 	# if macOS, build swift
@@ -10,7 +12,7 @@ build:
 build-swift: aw_watcher_window/aw-watcher-window-macos
 
 aw_watcher_window/aw-watcher-window-macos: aw_watcher_window/macos.swift
-	swiftc $^ -o $@
+	swiftc -target "$(shell uname -m)-apple-macosx$(MACOSX_DEPLOYMENT_TARGET)" $^ -o $@
 
 test:
 	poetry run aw-watcher-window --help  # Ensures that it at least starts
