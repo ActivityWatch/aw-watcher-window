@@ -123,6 +123,8 @@ var baseurl = "http://localhost:5600"
 var clientHostname = ProcessInfo.processInfo.hostName
 var clientName = "aw-watcher-window"
 var bucketName = "\(clientName)_\(clientHostname)"
+var excludeTitle = false
+var excludeTitlePatterns: [NSRegularExpression] = []
 
 let main = MainThing()
 var oldHeartbeat: Heartbeat?
@@ -140,6 +142,49 @@ encoder.dateEncodingStrategy = .custom({ date, encoder in
 start()
 RunLoop.main.run()
 
+func compileExcludeTitlePattern(_ pattern: String) -> NSRegularExpression {
+  do {
+    return try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
+  } catch let regexError {
+    error("Invalid regex pattern: \(pattern) — \(regexError.localizedDescription)")
+    exit(1)
+  }
+}
+
+func parseOptionalArguments(_ arguments: ArraySlice<String>) {
+  var index = arguments.startIndex
+  while index < arguments.endIndex {
+    let argument = arguments[index]
+
+    if argument == "--exclude-title" {
+      excludeTitle = true
+      index = arguments.index(after: index)
+      continue
+    }
+
+    if argument == "--exclude-titles" {
+      let nextIndex = arguments.index(after: index)
+      guard nextIndex < arguments.endIndex else {
+        error("Missing value for --exclude-titles")
+        exit(1)
+      }
+      excludeTitlePatterns.append(compileExcludeTitlePattern(arguments[nextIndex]))
+      index = arguments.index(after: nextIndex)
+      continue
+    }
+
+    error("Unknown argument: \(argument)")
+    exit(1)
+  }
+}
+
+func titleShouldBeExcluded(_ title: String) -> Bool {
+  let range = NSRange(title.startIndex..<title.endIndex, in: title)
+  return excludeTitlePatterns.contains { pattern in
+    pattern.firstMatch(in: title, options: [], range: range) != nil
+  }
+}
+
 func start() {
   // Arguments should be:
   //  - url + port
@@ -148,9 +193,9 @@ func start() {
   //  - client_id
   let arguments = CommandLine.arguments
 
-  // Check that we get 4 arguments
-  if arguments.count != 5 {
-    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client>")
+  // Check that we get the 4 required arguments plus any optional flags
+  if arguments.count < 5 {
+    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client> [--exclude-title] [--exclude-titles <pattern> ...]")
     exit(1)
   }
 
@@ -158,6 +203,7 @@ func start() {
   bucketName = arguments[2]
   clientHostname = arguments[3]
   clientName = arguments[4]
+  parseOptionalArguments(arguments.dropFirst(5))
 
   guard checkAccess() else {
     DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
@@ -386,6 +432,10 @@ class MainThing {
           data.title = tabTitle
         }
       }
+    }
+
+    if excludeTitle || titleShouldBeExcluded(data.title) {
+      data.title = "excluded"
     }
 
     let heartbeat = Heartbeat(timestamp: nowTime, data: data)
