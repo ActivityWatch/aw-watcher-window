@@ -8,15 +8,39 @@ exclude_title = false
 exclude_titles = []
 poll_time = 1.0
 strategy_macos = "swift"
+
+# Title cleaning rules - apply regex replacements to window titles for specific apps
+# [[title_cleaning_rules.rules]]
+# app = "firefox"
+# pattern = "( - Mozilla Firefox)$"
+# replacement = ""
 """.strip()
 
 
 def load_config():
-    return load_config_toml("aw-watcher-window", default_config)["aw-watcher-window"]
+    return load_config_toml("aw-watcher-window", default_config)
+
+
+def get_title_cleaning_rules():
+    """Load title cleaning rules from configuration"""
+    config = load_config_toml("aw-watcher-window", default_config)
+    rules = []
+    
+    # Check if title_cleaning_rules section exists
+    if "title_cleaning_rules" in config and "rules" in config["title_cleaning_rules"]:
+        for rule in config["title_cleaning_rules"]["rules"]:
+            if "app" in rule and "pattern" in rule:
+                rules.append({
+                    "app": rule["app"],
+                    "pattern": rule["pattern"],
+                    "replacement": rule.get("replacement", "")
+                })
+    
+    return rules
 
 
 def parse_args():
-    config = load_config()
+    config = load_config()["aw-watcher-window"]
 
     default_poll_time = config["poll_time"]
     default_exclude_title = config["exclude_title"]

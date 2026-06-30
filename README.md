@@ -24,6 +24,34 @@ that it might not get the exact version of the dependencies due to not reading t
 
 In order for this watcher to be available in the UI, you'll need to have a Away From Computer (afk) watcher running alongside it.
 
+## Title Cleaning Rules
+
+You can configure regex-based title cleaning rules to modify window titles before they are sent to the server. This is useful for removing application-specific suffixes, file paths, or other unwanted information from window titles.
+
+### Configuration
+
+Add title cleaning rules to your `~/.config/activitywatch/aw-watcher-window.toml` file:
+
+```toml
+# Title cleaning rules - apply regex replacements to window titles for specific apps
+[[title_cleaning_rules.rules]]
+app = "firefox"
+pattern = "( - Mozilla Firefox)$"
+replacement = ""
+
+[[title_cleaning_rules.rules]]
+app = "code"
+pattern = " - Visual Studio Code$"
+replacement = ""
+```
+
+Each rule consists of:
+- `app`: The application name (case-insensitive match)
+- `pattern`: Regular expression pattern to match in the window title
+- `replacement`: String to replace matches with (can be empty to remove)
+
+See `example-config.toml` for more examples.
+
 ### Note to macOS users
 
 To log current window title the terminal needs access to macOS accessibility API.

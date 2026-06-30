@@ -1,0 +1,41 @@
+# Example configuration file for aw-watcher-window with title cleaning rules
+# Save this as ~/.config/activitywatch/aw-watcher-window.toml
+
+[aw-watcher-window]
+exclude_title = false
+exclude_titles = []
+poll_time = 1.0
+strategy_macos = "swift"
+
+# Title cleaning rules - apply regex replacements to window titles for specific apps
+[[title_cleaning_rules.rules]]
+app = "firefox"
+pattern = "( - Mozilla Firefox)$"
+replacement = ""
+
+[[title_cleaning_rules.rules]]
+app = "google-chrome"
+pattern = "( - Google Chrome)$"
+replacement = ""
+
+[[title_cleaning_rules.rules]]
+app = "code"
+pattern = " - Visual Studio Code$"
+replacement = ""
+
+[[title_cleaning_rules.rules]]
+app = "sublime_text"
+pattern = " \\(.*\\) - Sublime Text$"
+replacement = ""
+
+# Example: Remove file paths from terminal titles
+[[title_cleaning_rules.rules]]
+app = "gnome-terminal"
+pattern = "^.*: (.*)$"
+replacement = "\\1"
+
+# Example: Clean browser tab information
+[[title_cleaning_rules.rules]]
+app = "firefox"
+pattern = "^(.*) — Mozilla Firefox$"
+replacement = "\\1"

@@ -11,7 +11,7 @@ from aw_client import ActivityWatchClient
 from aw_core.log import setup_logging
 from aw_core.models import Event
 
-from .config import parse_args
+from .config import parse_args, get_title_cleaning_rules
 from .exceptions import FatalError
 from .lib import get_current_window
 from .macos_cli import build_swift_command
@@ -39,6 +39,23 @@ def try_compile_title_regex(title):
     except re.error:
         logger.error(f"Invalid regex pattern: {title}")
         exit(1)
+
+
+def clean_window_title(app, title):
+    """Apply regex replacement rules to window title based on app name"""
+    try:
+        rules = get_title_cleaning_rules()
+        for rule in rules:
+            if rule["app"].lower() == app.lower():
+                try:
+                    title = re.sub(rule["pattern"], rule["replacement"], title)
+                    logger.debug(f"Applied title cleaning rule for {app}: {rule['pattern']} -> {rule['replacement']}")
+                except re.error:
+                    logger.error(f"Invalid regex pattern in title cleaning rule for {app}: {rule['pattern']}")
+        return title
+    except Exception as e:
+        logger.error(f"Error applying title cleaning rules: {e}")
+        return title
 
 
 def main():
@@ -147,6 +164,10 @@ def heartbeat_loop(
         if current_window is None:
             logger.debug("Unable to fetch window, trying again on next poll")
         else:
+            # Apply title cleaning rules before other processing
+            if "app" in current_window and "title" in current_window:
+                current_window["title"] = clean_window_title(current_window["app"], current_window["title"])
+            
             for pattern in exclude_titles:
                 if pattern.search(current_window["title"]):
                     current_window["title"] = "excluded"
