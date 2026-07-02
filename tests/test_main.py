@@ -5,7 +5,6 @@ import pytest
 import aw_watcher_window.main as main_module
 from aw_watcher_window.exceptions import FatalError
 from aw_watcher_window.macos_cli import build_swift_command
-from aw_watcher_window.main import ensure_research_strategy_supported
 
 
 def test_research_mode_rejects_macos_swift_strategy(monkeypatch):
@@ -13,21 +12,21 @@ def test_research_mode_rejects_macos_swift_strategy(monkeypatch):
     args = SimpleNamespace(research_enabled=True, strategy="swift")
 
     with pytest.raises(FatalError, match="not supported with the macOS swift strategy"):
-        ensure_research_strategy_supported(args)
+        main_module.ensure_research_strategy_supported(args)
 
 
 def test_research_mode_allows_macos_jxa_strategy(monkeypatch):
     monkeypatch.setattr(main_module.sys, "platform", "darwin")
     args = SimpleNamespace(research_enabled=True, strategy="jxa")
 
-    ensure_research_strategy_supported(args)
+    main_module.ensure_research_strategy_supported(args)
 
 
 def test_normal_mode_allows_macos_swift_strategy(monkeypatch):
     monkeypatch.setattr(main_module.sys, "platform", "darwin")
     args = SimpleNamespace(research_enabled=False, strategy="swift")
 
-    ensure_research_strategy_supported(args)
+    main_module.ensure_research_strategy_supported(args)
 
 
 def test_build_swift_command_omits_optional_filters():
