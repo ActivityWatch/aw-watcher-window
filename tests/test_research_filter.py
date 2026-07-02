@@ -127,16 +127,18 @@ class TestTransform(unittest.TestCase):
         self.assertEqual(result["app"], "Finder")
         self.assertEqual(result["url"], "file:///Users/")
 
-    def test_browser_preserves_url_and_incognito(self):
+    def test_browser_strips_url_but_preserves_incognito(self):
+        # Privacy fix: browser URLs must be stripped to prevent leaking search queries
+        # and auth tokens; incognito flag is non-sensitive metadata and can be preserved
         window = {
             "app": "Chrome",
             "title": "YouTube - Google Chrome",
-            "url": "https://youtube.com",
+            "url": "https://youtube.com/search?q=secret",
             "incognito": False,
         }
         result = transform(window, self.CATEGORY_MAP)
         self.assertEqual(result["title"], "Youtube")
-        self.assertEqual(result["url"], "https://youtube.com")
+        self.assertNotIn("url", result, "Browser URLs must be stripped for privacy")
         self.assertEqual(result["incognito"], False)
 
     def test_non_browser_minimal(self):

@@ -89,7 +89,12 @@ def transform(window: dict, category_map: Optional[dict]) -> dict:
         # Browser: replace title with a study category
         title = window.get("title", "")
         category = classify_title(title, category_map)
-        return {**window, "title": category}
+        # Don't spread window dict — URLs must not be exposed for privacy
+        result = {"app": app, "title": category}
+        # Preserve incognito flag if present (metadata, not a privacy concern)
+        if "incognito" in window:
+            result["incognito"] = window["incognito"]
+        return result
     else:
         # Non-browser: drop the title entirely (only app name recorded)
         result = {"app": app}
