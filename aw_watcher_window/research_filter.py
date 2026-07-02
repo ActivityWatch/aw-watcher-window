@@ -15,6 +15,8 @@ bypasses this Python transform.  Use ``--strategy jxa`` or ``--strategy
 applescript`` on macOS if you need Research Edition support there.
 """
 
+from typing import Optional
+
 # Known browser applications (lowercase, for case-insensitive matching)
 BROWSER_APPS = frozenset(
     {
@@ -58,7 +60,7 @@ def classify_title(title: str, category_map: dict) -> str:
     return "excluded"
 
 
-def transform(window: dict, category_map: dict | None) -> dict:
+def transform(window: dict, category_map: Optional[dict]) -> dict:
     """
     Apply Research Edition transforms to a window-data dict.
 
