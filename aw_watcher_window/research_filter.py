@@ -98,8 +98,9 @@ def transform(window: dict, category_map: Optional[dict]) -> dict:
     else:
         # Non-browser: drop the title entirely (only app name recorded)
         result = {"app": app}
-        # Preserve extra fields (url, incognito) that may exist on macOS JXA
-        for k in ("url", "incognito"):
-            if k in window:
-                result[k] = window[k]
+        # Preserve incognito flag if present (metadata, not a privacy concern)
+        # Note: URL is NOT preserved for non-browser apps — on macOS JXA,
+        # apps like Mail or file managers can expose sensitive URLs (mailbox://, file://)
+        if "incognito" in window:
+            result["incognito"] = window["incognito"]
         return result

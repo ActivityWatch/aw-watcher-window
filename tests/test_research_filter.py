@@ -120,12 +120,20 @@ class TestTransform(unittest.TestCase):
         self.assertNotIn("title", result)
         self.assertEqual(result["app"], "iTerm2")
 
-    def test_non_browser_preserves_extra_fields(self):
-        window = {"app": "Finder", "title": "Documents", "url": "file:///Users/"}
+    def test_non_browser_strips_url_but_preserves_incognito(self):
+        # Privacy fix: non-browser URLs must be stripped to prevent leaking sensitive
+        # file paths or email URLs (file://, mailbox://); incognito flag is non-sensitive
+        window = {
+            "app": "Finder",
+            "title": "Documents",
+            "url": "file:///Users/jdoe/sensitive-folder/",
+            "incognito": False,
+        }
         result = transform(window, self.CATEGORY_MAP)
         self.assertNotIn("title", result)
         self.assertEqual(result["app"], "Finder")
-        self.assertEqual(result["url"], "file:///Users/")
+        self.assertNotIn("url", result, "Non-browser URLs must be stripped for privacy")
+        self.assertEqual(result["incognito"], False)
 
     def test_browser_strips_url_but_preserves_incognito(self):
         # Privacy fix: browser URLs must be stripped to prevent leaking search queries
