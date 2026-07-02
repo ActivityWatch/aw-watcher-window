@@ -65,4 +65,5 @@ def parse_args():
         help="Enable Research Edition mode: browser titles are classified into study categories, non-browser titles are dropped. Category map must be set in the config file. Not supported with --strategy swift on macOS.",
     )
     parsed_args = parser.parse_args()
+    parsed_args.research_category_map = dict(config.get("research_category_map", {}))
     return parsed_args

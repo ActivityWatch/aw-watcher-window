@@ -36,7 +36,6 @@ BROWSER_APPS = frozenset(
         "firefox.exe",
         "msedge.exe",
         "opera.exe",
-        "safari.exe",
     }
 )
 

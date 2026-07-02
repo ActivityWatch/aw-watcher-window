@@ -11,7 +11,7 @@ from aw_client import ActivityWatchClient
 from aw_core.log import setup_logging
 from aw_core.models import Event
 
-from .config import load_config, parse_args
+from .config import parse_args
 from .exceptions import FatalError
 from .lib import get_current_window
 from .research_filter import transform as research_transform
@@ -42,6 +42,19 @@ def try_compile_title_regex(title):
         exit(1)
 
 
+def ensure_research_strategy_supported(args):
+    if (
+        args.research_enabled
+        and sys.platform == "darwin"
+        and args.strategy == "swift"
+    ):
+        raise FatalError(
+            "Research Edition mode is not supported with the macOS swift strategy. "
+            "Use --strategy jxa or --strategy applescript so window titles are "
+            "filtered before upload."
+        )
+
+
 def main():
     args = parse_args()
 
@@ -57,6 +70,7 @@ def main():
         log_stderr=True,
         log_file=True,
     )
+    ensure_research_strategy_supported(args)
 
     if sys.platform == "darwin":
         background_ensure_permissions()
@@ -99,9 +113,8 @@ def main():
                 print("KeyboardInterrupt")
                 kill_process(p.pid)
         else:
-            config = load_config()
             research_category_map = (
-                dict(config.get("research_category_map", {}))
+                args.research_category_map
                 if args.research_enabled
                 else None
             )
