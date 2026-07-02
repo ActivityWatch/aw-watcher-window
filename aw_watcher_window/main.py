@@ -11,9 +11,10 @@ from aw_client import ActivityWatchClient
 from aw_core.log import setup_logging
 from aw_core.models import Event
 
-from .config import parse_args
+from .config import load_config, parse_args
 from .exceptions import FatalError
 from .lib import get_current_window
+from .research_filter import transform as research_transform
 from .macos_cli import build_swift_command
 from .macos_permissions import background_ensure_permissions
 
@@ -98,6 +99,12 @@ def main():
                 print("KeyboardInterrupt")
                 kill_process(p.pid)
         else:
+            config = load_config()
+            research_category_map = (
+                dict(config.get("research_category_map", {}))
+                if args.research_enabled
+                else None
+            )
             heartbeat_loop(
                 client,
                 bucket_id,
@@ -109,11 +116,18 @@ def main():
                     for title in args.exclude_titles
                     if title is not None
                 ],
+                research_category_map=research_category_map,
             )
 
 
 def heartbeat_loop(
-    client, bucket_id, poll_time, strategy, exclude_title=False, exclude_titles=[]
+    client,
+    bucket_id,
+    poll_time,
+    strategy,
+    exclude_title=False,
+    exclude_titles=[],
+    research_category_map=None,
 ):
     while True:
         if os.getppid() == 1:
@@ -153,6 +167,9 @@ def heartbeat_loop(
 
             if exclude_title:
                 current_window["title"] = "excluded"
+
+            if research_category_map is not None:
+                current_window = research_transform(current_window, research_category_map)
 
             now = datetime.now(timezone.utc)
             current_window_event = Event(timestamp=now, data=current_window)
