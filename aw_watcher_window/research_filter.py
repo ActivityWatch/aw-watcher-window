@@ -6,9 +6,10 @@ Replicates the approach used by AW research forks:
   Unmatched titles → 'excluded'.
 - Non-browser apps: title is dropped entirely (only app name recorded).
 
-Enable via config (``research_enabled = true``) and supply a category map
-in ``[aw-watcher-window.research_category_map]``.  The map is left empty
-by default so normal users see zero behaviour change.
+Enable via config (``research_enabled = true``) and optionally supply a category
+map in ``[aw-watcher-window.research_category_map]``.  If the map is empty,
+browser titles are classified as ``excluded`` and non-browser titles are still
+dropped.
 
 macOS note: the ``swift`` strategy delegates to the compiled Swift helper and
 bypasses this Python transform.  Use ``--strategy jxa`` or ``--strategy
@@ -30,6 +31,7 @@ BROWSER_APPS = frozenset(
         "firefox developer edition",
         "safari",
         "edge",
+        "microsoft edge",
         "opera",
         "chrome.exe",
         "brave.exe",
@@ -65,11 +67,11 @@ def transform(window: dict, category_map: Optional[dict]) -> dict:
 
     *window*: ``{"app": str, "title": str}`` (may also carry *url*,
     *incognito* on macOS JXA — those are preserved for browsers).
-    *category_map*: study-specific mapping dict, or ``None``/empty to no-op.
+    *category_map*: study-specific mapping dict, or ``None`` to no-op.
 
     Returns the transformed window dict (never mutates the input).
     """
-    if not category_map:
+    if category_map is None:
         return window
 
     app = window.get("app", "")

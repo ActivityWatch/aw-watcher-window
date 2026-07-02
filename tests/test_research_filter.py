@@ -16,7 +16,14 @@ class TestIsBrowser(unittest.TestCase):
             self.assertTrue(is_browser(app), f"{app!r} should be a browser")
 
     def test_case_insensitive(self):
-        for app in ("Chrome", "GOOGLE CHROME", "Firefox", "Safari", "Edge"):
+        for app in (
+            "Chrome",
+            "GOOGLE CHROME",
+            "Firefox",
+            "Safari",
+            "Edge",
+            "Microsoft Edge",
+        ):
             self.assertTrue(is_browser(app), f"{app!r} should be a browser")
 
     def test_non_browsers(self):
@@ -77,9 +84,13 @@ class TestTransform(unittest.TestCase):
         window = {"app": "Chrome", "title": "YouTube - Chrome"}
         self.assertEqual(transform(window, None), window)
 
-    def test_empty_category_map_returns_unchanged(self):
+    def test_empty_category_map_excludes_browser_title(self):
         window = {"app": "Chrome", "title": "YouTube - Chrome"}
-        self.assertEqual(transform(window, {}), window)
+        self.assertEqual(transform(window, {}), {"app": "Chrome", "title": "excluded"})
+
+    def test_empty_category_map_still_drops_non_browser_title(self):
+        window = {"app": "Terminal", "title": "bash"}
+        self.assertEqual(transform(window, {}), {"app": "Terminal"})
 
     def test_browser_title_classified(self):
         window = {"app": "Chrome", "title": "YouTube - Chrome"}

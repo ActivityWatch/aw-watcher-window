@@ -57,12 +57,19 @@ def parse_args():
         choices=["jxa", "applescript", "swift"],
         help="(macOS only) strategy to use for retrieving the active window",
     )
-    parser.add_argument(
+    research_group = parser.add_mutually_exclusive_group()
+    research_group.add_argument(
         "--research",
         dest="research_enabled",
         action="store_true",
         default=default_research_enabled,
         help="Enable Research Edition mode: browser titles are classified into study categories, non-browser titles are dropped. Category map must be set in the config file. Not supported with --strategy swift on macOS.",
+    )
+    research_group.add_argument(
+        "--no-research",
+        dest="research_enabled",
+        action="store_false",
+        help="Disable Research Edition mode, even when enabled in the config file.",
     )
     parsed_args = parser.parse_args()
     parsed_args.research_category_map = dict(config.get("research_category_map", {}))
