@@ -19,10 +19,20 @@ class TestIsBrowser(unittest.TestCase):
         for app in (
             "Chrome",
             "GOOGLE CHROME",
+            "Google-chrome",
             "Firefox",
             "Safari",
             "Edge",
             "Microsoft Edge",
+        ):
+            self.assertTrue(is_browser(app), f"{app!r} should be a browser")
+
+    def test_linux_wm_class_browser_names(self):
+        for app in (
+            "Google-chrome",
+            "Brave-browser",
+            "Chromium-browser",
+            "Microsoft-edge",
         ):
             self.assertTrue(is_browser(app), f"{app!r} should be a browser")
 
@@ -137,6 +147,14 @@ class TestTransform(unittest.TestCase):
         window = {"app": "  Brave Browser  ", "title": "Facebook"}
         result = transform(window, self.CATEGORY_MAP)
         self.assertEqual(result["title"], "Facebook")
+
+    def test_linux_browser_wm_class_title_classified(self):
+        for app in ("Google-chrome", "Brave-browser"):
+            with self.subTest(app=app):
+                window = {"app": app, "title": "YouTube"}
+                result = transform(window, self.CATEGORY_MAP)
+                self.assertEqual(result["app"], app)
+                self.assertEqual(result["title"], "Youtube")
 
     def test_input_not_mutated(self):
         window = {"app": "Chrome", "title": "YouTube - Chrome"}
