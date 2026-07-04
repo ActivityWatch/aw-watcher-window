@@ -1,5 +1,6 @@
 import pytest
 
+from aw_watcher_window.main import compute_pulsetime
 from aw_watcher_window.macos_cli import build_swift_command
 
 
@@ -63,5 +64,4 @@ def test_pulsetime_scales_with_poll_time(poll_time: float, expected_pulsetime: f
     poll_time+1) keeps backward compat at low poll_time while scaling the jitter
     tolerance at higher values. See: ActivityWatch/activitywatch#1177
     """
-    pulsetime = max(poll_time * 1.5, poll_time + 1.0)
-    assert pulsetime == expected_pulsetime
+    assert compute_pulsetime(poll_time) == expected_pulsetime

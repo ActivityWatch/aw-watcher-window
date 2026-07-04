@@ -25,6 +25,18 @@ if log_level:
     logger.setLevel(logging.__getattribute__(log_level.upper()))
 
 
+def compute_pulsetime(poll_time: float) -> float:
+    """Scale pulsetime with poll_time so OS scheduling jitter doesn't break heartbeat chains.
+
+    At poll_time=1s, jitter ~0.15s is well within 1s margin (poll_time+1).
+    At poll_time=5s, jitter ~0.75s exceeds the 1s margin ~10% of the time,
+    causing missing time in the timeline. max(poll_time*1.5, poll_time+1) keeps
+    backward compatibility at poll_time≤2s while fixing the problem at higher
+    polling intervals. See: https://github.com/ActivityWatch/activitywatch/issues/1177
+    """
+    return max(poll_time * 1.5, poll_time + 1.0)
+
+
 def kill_process(pid):
     logger.info("Killing process {}".format(pid))
     try:
@@ -157,17 +169,10 @@ def heartbeat_loop(
             now = datetime.now(timezone.utc)
             current_window_event = Event(timestamp=now, data=current_window)
 
-            # Scale pulsetime with poll_time so OS scheduling jitter doesn't break
-            # the heartbeat chain. At poll_time=1s, jitter ~0.15s is well within 1s
-            # margin (poll_time + 1). At poll_time=5s, jitter ~0.75s exceeds the
-            # 1s margin ~10% of the time, causing missing time in the timeline.
-            # max(poll_time * 1.5, poll_time + 1) keeps backward compatibility at
-            # poll_time≤2s while fixing the problem at higher polling intervals.
-            # See: https://github.com/ActivityWatch/activitywatch/issues/1177
             client.heartbeat(
                 bucket_id,
                 current_window_event,
-                pulsetime=max(poll_time * 1.5, poll_time + 1.0),
+                pulsetime=compute_pulsetime(poll_time),
                 queued=True,
             )
 
