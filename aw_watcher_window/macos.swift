@@ -238,7 +238,15 @@ func isResearchBrowser(_ app: String) -> Bool {
   return researchBrowserApps.contains(app.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
 }
 
-func classifyResearchTitle(_ title: String) -> String {
+func classifyResearch(_ title: String, url: String?) -> String {
+  // Try URL first — more reliable than page title, which can change mid-load
+  if let url = url, !url.isEmpty {
+    for item in researchCategoryMap {
+      if url.range(of: item.pattern, options: [.caseInsensitive]) != nil {
+        return item.category
+      }
+    }
+  }
   for item in researchCategoryMap {
     if title.range(of: item.pattern, options: [.caseInsensitive]) != nil {
       return item.category
@@ -253,7 +261,7 @@ func applyResearchFilter(_ data: NetworkMessage) -> NetworkMessage {
   }
 
   if isResearchBrowser(data.app) {
-    return NetworkMessage(app: data.app, title: classifyResearchTitle(data.title ?? ""), url: nil)
+    return NetworkMessage(app: data.app, title: classifyResearch(data.title ?? "", url: data.url), url: nil)
   }
 
   return NetworkMessage(app: data.app, title: nil, url: nil)

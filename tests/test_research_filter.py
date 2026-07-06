@@ -83,6 +83,25 @@ class TestClassifyTitle(unittest.TestCase):
     def test_empty_title(self):
         self.assertEqual(classify_title("", self.CATEGORY_MAP), "excluded")
 
+    def test_url_matches_when_title_does_not(self):
+        # URL is used for classification when title gives no match
+        result = classify_title("New Tab", self.CATEGORY_MAP, url="https://youtube.com/watch?v=abc")
+        self.assertEqual(result, "Youtube")
+
+    def test_url_takes_priority_over_title(self):
+        # URL match wins even when title would match a different category
+        result = classify_title("Gmail - Google", self.CATEGORY_MAP, url="https://youtube.com/")
+        self.assertEqual(result, "Youtube")
+
+    def test_url_fallback_to_title(self):
+        # If URL doesn't match any pattern, title is used
+        result = classify_title("Facebook - Social", self.CATEGORY_MAP, url="https://example.com/unrelated")
+        self.assertEqual(result, "Facebook")
+
+    def test_url_case_insensitive(self):
+        result = classify_title("", self.CATEGORY_MAP, url="HTTPS://YOUTUBE.COM/WATCH")
+        self.assertEqual(result, "Youtube")
+
 
 class TestTransform(unittest.TestCase):
     CATEGORY_MAP = {
@@ -171,6 +190,28 @@ class TestTransform(unittest.TestCase):
         original = dict(window)
         transform(window, self.CATEGORY_MAP)
         self.assertEqual(window, original)
+
+    def test_browser_url_used_for_classification(self):
+        # URL is used for classification when title doesn't match (Swift advantage)
+        window = {
+            "app": "Safari",
+            "title": "New Tab",  # generic title — won't match
+            "url": "https://youtube.com/watch?v=abc123",
+        }
+        result = transform(window, self.CATEGORY_MAP)
+        self.assertEqual(result["title"], "Youtube")
+        self.assertNotIn("url", result)
+
+    def test_browser_url_takes_priority_over_title(self):
+        # URL match takes precedence over title match
+        window = {
+            "app": "Chrome",
+            "title": "Facebook - Home",
+            "url": "https://youtube.com/",
+        }
+        result = transform(window, self.CATEGORY_MAP)
+        self.assertEqual(result["title"], "Youtube")
+        self.assertNotIn("url", result)
 
 
 if __name__ == "__main__":

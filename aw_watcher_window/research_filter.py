@@ -11,8 +11,10 @@ map in ``[aw-watcher-window.research_category_map]``.  If the map is empty,
 browser titles are classified as ``excluded`` and non-browser titles are still
 dropped.
 
-macOS note: the default ``swift`` strategy applies the same privacy transform in
-the compiled helper before upload.
+macOS note: the default ``swift`` strategy applies the privacy transform in the
+compiled helper before upload.  Since Swift can capture browser URLs via
+accessibility APIs, it uses them for more reliable category classification before
+stripping them from the output.
 """
 
 from typing import Optional
@@ -55,13 +57,20 @@ def is_browser(app: str) -> bool:
     return app.strip().lower() in BROWSER_APPS
 
 
-def classify_title(title: str, category_map: dict) -> str:
+def classify_title(title: str, category_map: dict, url: str = "") -> str:
     """
-    Classify a browser window *title* into a study category via substring matching.
+    Classify a browser window into a study category via substring matching.
 
+    Tries *url* first when provided (more reliable than page titles, which can
+    change mid-load), then falls back to *title*.
     *category_map*: ``{substring: category_name}`` — first matching substring wins.
     Returns the category name, or ``"excluded"`` if nothing matched.
     """
+    if url:
+        url_lower = url.lower()
+        for pattern, category in category_map.items():
+            if pattern.lower() in url_lower:
+                return category
     title_lower = title.lower()
     for pattern, category in category_map.items():
         if pattern.lower() in title_lower:
@@ -87,7 +96,8 @@ def transform(window: dict, category_map: Optional[dict]) -> dict:
     if is_browser(app):
         # Browser: replace title with a study category
         title = window.get("title", "")
-        category = classify_title(title, category_map)
+        url = window.get("url", "")
+        category = classify_title(title, category_map, url=url)
         # Don't spread window dict — URLs must not be exposed for privacy
         result = {"app": app, "title": category}
         # Preserve incognito flag if present (metadata, not a privacy concern)
