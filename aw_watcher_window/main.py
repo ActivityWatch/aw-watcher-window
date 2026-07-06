@@ -42,19 +42,6 @@ def try_compile_title_regex(title):
         exit(1)
 
 
-def ensure_research_strategy_supported(args):
-    if (
-        args.research_enabled
-        and sys.platform == "darwin"
-        and args.strategy == "swift"
-    ):
-        raise FatalError(
-            "Research Edition mode is not supported with the macOS swift strategy. "
-            "Use --strategy jxa or --strategy applescript so window titles are "
-            "filtered before upload."
-        )
-
-
 def main():
     args = parse_args()
 
@@ -70,8 +57,6 @@ def main():
         log_stderr=True,
         log_file=True,
     )
-    ensure_research_strategy_supported(args)
-
     if sys.platform == "darwin":
         background_ensure_permissions()
 
@@ -88,6 +73,11 @@ def main():
     client.wait_for_start()
 
     with client:
+        research_category_map = (
+            args.research_category_map
+            if args.research_enabled
+            else None
+        )
         if sys.platform == "darwin" and args.strategy == "swift":
             logger.info("Using swift strategy, calling out to swift binary")
             binpath = os.path.join(
@@ -104,6 +94,7 @@ def main():
                         client.client_name,
                         exclude_title=args.exclude_title,
                         exclude_titles=args.exclude_titles,
+                        research_category_map=research_category_map,
                     )
                 )
                 # terminate swift process when this process dies
@@ -113,11 +104,6 @@ def main():
                 print("KeyboardInterrupt")
                 kill_process(p.pid)
         else:
-            research_category_map = (
-                args.research_category_map
-                if args.research_enabled
-                else None
-            )
             heartbeat_loop(
                 client,
                 bucket_id,

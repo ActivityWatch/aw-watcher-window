@@ -1,32 +1,67 @@
 from types import SimpleNamespace
 
-import pytest
-
 import aw_watcher_window.main as main_module
-from aw_watcher_window.exceptions import FatalError
 from aw_watcher_window.macos_cli import build_swift_command
 
 
-def test_research_mode_rejects_macos_swift_strategy(monkeypatch):
+def test_research_mode_passes_map_to_macos_swift_strategy(monkeypatch):
+    commands = []
+
+    class FakeProcess:
+        pid = 123
+
+        def wait(self):
+            return None
+
+    class FakeClient:
+        client_name = "aw-watcher-window"
+        client_hostname = "host.localdomain"
+        server_address = "http://localhost:5600"
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def create_bucket(self, *args, **kwargs):
+            pass
+
+        def wait_for_start(self):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
     monkeypatch.setattr(main_module.sys, "platform", "darwin")
-    args = SimpleNamespace(research_enabled=True, strategy="swift")
+    monkeypatch.setattr(main_module, "background_ensure_permissions", lambda: None)
+    monkeypatch.setattr(main_module, "setup_logging", lambda **kwargs: None)
+    monkeypatch.setattr(main_module, "ActivityWatchClient", FakeClient)
+    monkeypatch.setattr(main_module.signal, "signal", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        main_module.subprocess,
+        "Popen",
+        lambda command: commands.append(command) or FakeProcess(),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "parse_args",
+        lambda: SimpleNamespace(
+            testing=True,
+            verbose=False,
+            host=None,
+            port=None,
+            strategy="swift",
+            exclude_title=False,
+            exclude_titles=[],
+            research_enabled=True,
+            research_category_map={"youtube": "Youtube"},
+        ),
+    )
 
-    with pytest.raises(FatalError, match="not supported with the macOS swift strategy"):
-        main_module.ensure_research_strategy_supported(args)
+    main_module.main()
 
-
-def test_research_mode_allows_macos_jxa_strategy(monkeypatch):
-    monkeypatch.setattr(main_module.sys, "platform", "darwin")
-    args = SimpleNamespace(research_enabled=True, strategy="jxa")
-
-    main_module.ensure_research_strategy_supported(args)
-
-
-def test_normal_mode_allows_macos_swift_strategy(monkeypatch):
-    monkeypatch.setattr(main_module.sys, "platform", "darwin")
-    args = SimpleNamespace(research_enabled=False, strategy="swift")
-
-    main_module.ensure_research_strategy_supported(args)
+    assert commands[0][-4:] == ["--research", "--research-category", "youtube", "Youtube"]
 
 
 def test_build_swift_command_omits_optional_filters():
@@ -69,4 +104,50 @@ def test_build_swift_command_passes_title_filters():
         "Zoom",
         "--exclude-titles",
         "Slack.*huddle",
+    ]
+
+
+def test_build_swift_command_passes_empty_research_map():
+    command = build_swift_command(
+        "/tmp/aw-watcher-window-macos",
+        "http://localhost:5600",
+        "bucket",
+        "host.localdomain",
+        "aw-watcher-window",
+        research_category_map={},
+    )
+
+    assert command == [
+        "/tmp/aw-watcher-window-macos",
+        "http://localhost:5600",
+        "bucket",
+        "host.localdomain",
+        "aw-watcher-window",
+        "--research",
+    ]
+
+
+def test_build_swift_command_passes_research_categories():
+    command = build_swift_command(
+        "/tmp/aw-watcher-window-macos",
+        "http://localhost:5600",
+        "bucket",
+        "host.localdomain",
+        "aw-watcher-window",
+        research_category_map={"youtube": "Youtube", "gmail": "Email"},
+    )
+
+    assert command == [
+        "/tmp/aw-watcher-window-macos",
+        "http://localhost:5600",
+        "bucket",
+        "host.localdomain",
+        "aw-watcher-window",
+        "--research",
+        "--research-category",
+        "youtube",
+        "Youtube",
+        "--research-category",
+        "gmail",
+        "Email",
     ]

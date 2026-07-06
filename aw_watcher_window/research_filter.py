@@ -11,9 +11,8 @@ map in ``[aw-watcher-window.research_category_map]``.  If the map is empty,
 browser titles are classified as ``excluded`` and non-browser titles are still
 dropped.
 
-macOS note: the ``swift`` strategy delegates to the compiled Swift helper and
-bypasses this Python transform.  Use ``--strategy jxa`` or ``--strategy
-applescript`` on macOS if you need Research Edition support there.
+macOS note: the default ``swift`` strategy applies the same privacy transform in
+the compiled helper before upload.
 """
 
 from typing import Optional
@@ -75,7 +74,7 @@ def transform(window: dict, category_map: Optional[dict]) -> dict:
     Apply Research Edition transforms to a window-data dict.
 
     *window*: ``{"app": str, "title": str}`` (may also carry *url*,
-    *incognito* on macOS JXA — those are preserved for browsers).
+    *incognito* on macOS JXA — URLs are stripped and incognito is preserved).
     *category_map*: study-specific mapping dict, or ``None`` to no-op.
 
     Returns the transformed window dict (never mutates the input).

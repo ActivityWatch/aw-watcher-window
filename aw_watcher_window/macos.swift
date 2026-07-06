@@ -63,7 +63,7 @@ extension SBApplication: SafariApplication {}
 
 struct NetworkMessage: Codable, Equatable {
   var app: String
-  var title: String
+  var title: String?
   var url: String?
 }
 
@@ -125,6 +125,37 @@ var clientName = "aw-watcher-window"
 var bucketName = "\(clientName)_\(clientHostname)"
 var excludeTitle = false
 var excludeTitlePatterns: [NSRegularExpression] = []
+var researchEnabled = false
+var researchCategoryMap: [(pattern: String, category: String)] = []
+
+let researchBrowserApps = Set([
+  "chrome",
+  "google chrome",
+  "google chrome canary",
+  "google-chrome",
+  "google-chrome-beta",
+  "google-chrome-unstable",
+  "chromium",
+  "chromium-browser",
+  "brave browser",
+  "brave",
+  "brave-browser",
+  "firefox",
+  "firefox developer edition",
+  "firefox-esr",
+  "safari",
+  "edge",
+  "microsoft edge",
+  "microsoft-edge",
+  "microsoft-edge-beta",
+  "microsoft-edge-dev",
+  "opera",
+  "chrome.exe",
+  "brave.exe",
+  "firefox.exe",
+  "msedge.exe",
+  "opera.exe",
+])
 
 let main = MainThing()
 var oldHeartbeat: Heartbeat?
@@ -173,6 +204,24 @@ func parseOptionalArguments(_ arguments: ArraySlice<String>) {
       continue
     }
 
+    if argument == "--research" {
+      researchEnabled = true
+      index = arguments.index(after: index)
+      continue
+    }
+
+    if argument == "--research-category" {
+      let patternIndex = arguments.index(after: index)
+      let categoryIndex = patternIndex < arguments.endIndex ? arguments.index(after: patternIndex) : arguments.endIndex
+      guard patternIndex < arguments.endIndex, categoryIndex < arguments.endIndex else {
+        error("Missing pattern/category values for --research-category")
+        exit(1)
+      }
+      researchCategoryMap.append((pattern: arguments[patternIndex], category: arguments[categoryIndex]))
+      index = arguments.index(after: categoryIndex)
+      continue
+    }
+
     error("Unknown argument: \(argument)")
     exit(1)
   }
@@ -185,6 +234,31 @@ func titleShouldBeExcluded(_ title: String) -> Bool {
   }
 }
 
+func isResearchBrowser(_ app: String) -> Bool {
+  return researchBrowserApps.contains(app.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+}
+
+func classifyResearchTitle(_ title: String) -> String {
+  for item in researchCategoryMap {
+    if title.range(of: item.pattern, options: [.caseInsensitive]) != nil {
+      return item.category
+    }
+  }
+  return "excluded"
+}
+
+func applyResearchFilter(_ data: NetworkMessage) -> NetworkMessage {
+  if !researchEnabled {
+    return data
+  }
+
+  if isResearchBrowser(data.app) {
+    return NetworkMessage(app: data.app, title: classifyResearchTitle(data.title ?? ""), url: nil)
+  }
+
+  return NetworkMessage(app: data.app, title: nil, url: nil)
+}
+
 func start() {
   // Arguments should be:
   //  - url + port
@@ -195,7 +269,7 @@ func start() {
 
   // Check that we get the 4 required arguments plus any optional flags
   if arguments.count < 5 {
-    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client> [--exclude-title] [--exclude-titles <pattern> ...]")
+    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client> [--exclude-title] [--exclude-titles <pattern> ...] [--research] [--research-category <pattern> <category> ...]")
     exit(1)
   }
 
@@ -310,7 +384,7 @@ func sendHeartbeatSingle(_ heartbeat: Heartbeat, pulsetime: Double) async throws
     throw HeartbeatError.error(msg: "Failed to send heartbeat: \(response)")
   }
 
-  debug("[heartbeat] bucket: \(bucketName), timestamp: \(heartbeat.timestamp), pulsetime: \(round(pulsetime * 10) / 10), app: \(heartbeat.data.app), title: \(heartbeat.data.title), url: \(heartbeat.data.url ?? "")")
+  debug("[heartbeat] bucket: \(bucketName), timestamp: \(heartbeat.timestamp), pulsetime: \(round(pulsetime * 10) / 10), app: \(heartbeat.data.app), title: \(heartbeat.data.title ?? ""), url: \(heartbeat.data.url ?? "")")
 }
 
 class MainThing {
@@ -434,11 +508,11 @@ class MainThing {
       }
     }
 
-    if excludeTitle || titleShouldBeExcluded(data.title) {
+    if excludeTitle || titleShouldBeExcluded(data.title ?? "") {
       data.title = "excluded"
     }
 
-    let heartbeat = Heartbeat(timestamp: nowTime, data: data)
+    let heartbeat = Heartbeat(timestamp: nowTime, data: applyResearchFilter(data))
     sendHeartbeat(heartbeat)
   }
 

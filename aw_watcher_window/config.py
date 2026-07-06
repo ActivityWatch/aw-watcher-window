@@ -63,7 +63,7 @@ def parse_args():
         dest="research_enabled",
         action="store_true",
         default=default_research_enabled,
-        help="Enable Research Edition mode: browser titles are classified into study categories, non-browser titles are dropped. Category map must be set in the config file. Not supported with --strategy swift on macOS.",
+        help="Enable Research Edition mode: browser titles are classified into study categories, non-browser titles are dropped. Category map must be set in the config file.",
     )
     research_group.add_argument(
         "--no-research",
