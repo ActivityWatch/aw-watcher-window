@@ -516,11 +516,13 @@ class MainThing {
       }
     }
 
-    if excludeTitle || titleShouldBeExcluded(data.title ?? "") {
+    if researchEnabled {
+      data = applyResearchFilter(data)
+    } else if excludeTitle || titleShouldBeExcluded(data.title ?? "") {
       data.title = "excluded"
     }
 
-    let heartbeat = Heartbeat(timestamp: nowTime, data: applyResearchFilter(data))
+    let heartbeat = Heartbeat(timestamp: nowTime, data: data)
     sendHeartbeat(heartbeat)
   }
 

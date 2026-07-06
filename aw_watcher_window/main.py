@@ -160,15 +160,12 @@ def heartbeat_loop(
         if current_window is None:
             logger.debug("Unable to fetch window, trying again on next poll")
         else:
-            for pattern in exclude_titles:
-                if pattern.search(current_window["title"]):
-                    current_window["title"] = "excluded"
-
-            if exclude_title:
-                current_window["title"] = "excluded"
-
-            if research_category_map is not None:
-                current_window = research_transform(current_window, research_category_map)
+            current_window = transform_window(
+                current_window,
+                exclude_title=exclude_title,
+                exclude_titles=exclude_titles,
+                research_category_map=research_category_map,
+            )
 
             now = datetime.now(timezone.utc)
             current_window_event = Event(timestamp=now, data=current_window)
@@ -181,3 +178,22 @@ def heartbeat_loop(
             )
 
         sleep(poll_time)
+
+
+def transform_window(
+    current_window,
+    exclude_title=False,
+    exclude_titles=None,
+    research_category_map=None,
+):
+    if research_category_map is not None:
+        return research_transform(current_window, research_category_map)
+
+    for pattern in exclude_titles or []:
+        if pattern.search(current_window["title"]):
+            current_window["title"] = "excluded"
+
+    if exclude_title:
+        current_window["title"] = "excluded"
+
+    return current_window

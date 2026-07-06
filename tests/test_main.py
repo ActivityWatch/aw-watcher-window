@@ -1,3 +1,4 @@
+import re
 from types import SimpleNamespace
 
 import aw_watcher_window.main as main_module
@@ -151,3 +152,46 @@ def test_build_swift_command_passes_research_categories():
         "gmail",
         "Email",
     ]
+
+
+def test_research_transform_takes_precedence_over_exclude_titles():
+    window = {
+        "app": "Chrome",
+        "title": "YouTube - Google Chrome",
+        "url": "https://youtube.com/watch?v=abc",
+    }
+
+    transformed = main_module.transform_window(
+        window,
+        exclude_titles=[re.compile("youtube", re.IGNORECASE)],
+        research_category_map={"youtube": "Youtube"},
+    )
+
+    assert transformed == {"app": "Chrome", "title": "Youtube"}
+
+
+def test_research_transform_takes_precedence_over_exclude_title():
+    window = {
+        "app": "Chrome",
+        "title": "YouTube - Google Chrome",
+        "url": "https://youtube.com/watch?v=abc",
+    }
+
+    transformed = main_module.transform_window(
+        window,
+        exclude_title=True,
+        research_category_map={"youtube": "Youtube"},
+    )
+
+    assert transformed == {"app": "Chrome", "title": "Youtube"}
+
+
+def test_legacy_exclude_titles_still_apply_without_research_mode():
+    window = {"app": "Chrome", "title": "YouTube - Google Chrome"}
+
+    transformed = main_module.transform_window(
+        window,
+        exclude_titles=[re.compile("youtube", re.IGNORECASE)],
+    )
+
+    assert transformed == {"app": "Chrome", "title": "excluded"}
