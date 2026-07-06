@@ -11,10 +11,10 @@ map in ``[aw-watcher-window.research_category_map]``.  If the map is empty,
 browser titles are classified as ``excluded`` and non-browser titles are still
 dropped.
 
-macOS note: the default ``swift`` strategy applies the privacy transform in the
-compiled helper before upload.  Since Swift can capture browser URLs via
-accessibility APIs, it uses them for more reliable category classification before
-stripping them from the output.
+macOS note: on macOS the default ``swift`` strategy captures browser URLs via
+accessibility APIs and includes them in the window dict.  This filter uses those
+URLs for more reliable category classification (``classify_title`` prefers URL
+over title) and strips them from the output before the event is recorded.
 """
 
 from typing import Optional
