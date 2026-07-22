@@ -326,6 +326,59 @@ class MainThing {
     "Brave Browser",
   ]
 
+  // Gecko-based browsers have no scripting interface for tabs, but expose the
+  // current page URL on their accessibility tree's AXWebArea node
+  let FIREFOX_BROWSERS = [
+    "Firefox",
+    "Firefox Developer Edition",
+    "Firefox Nightly",
+    "Zen",
+    "Zen Browser",
+    "LibreWolf",
+    "Waterfox",
+    "Floorp",
+  ]
+
+  // upper bound on accessibility elements examined per lookup, so a
+  // pathological tree can't stall the watcher (the web area is typically
+  // found within a few dozen elements)
+  let AX_TRAVERSAL_LIMIT = 384
+
+  // Search the window's accessibility tree breadth-first for an AXWebArea node
+  // and return its AXURL, the URL of the loaded page. The top-level document's
+  // web area sits shallow in Gecko's tree and is reached before any web areas
+  // of nested iframes, so the first hit is the current page.
+  // (there is no kAXWebAreaRole constant in HIServices; the role string is
+  // defined by the browsers themselves)
+  func geckoURL(window: AXUIElement) -> String? {
+    var queue: [AXUIElement] = [window]
+    var index = 0
+    while index < queue.count && index < AX_TRAVERSAL_LIMIT {
+      let element = queue[index]
+      index += 1
+
+      var roleRef: AnyObject?
+      AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
+      if roleRef as? String == "AXWebArea" {
+        var urlRef: AnyObject?
+        AXUIElementCopyAttributeValue(element, kAXURLAttribute as CFString, &urlRef)
+        if let url = urlRef as? NSURL {
+          return url.absoluteString
+        }
+        // no URL on the web area (e.g. page still loading); stop rather than
+        // keep searching, since a deeper hit would be an iframe's web area
+        return urlRef as? String
+      }
+
+      var childrenRef: AnyObject?
+      AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef)
+      if let children = childrenRef as? [AXUIElement] {
+        queue.append(contentsOf: children)
+      }
+    }
+    return nil
+  }
+
   @objc func pollActiveWindow() {
     debug("Polling active window")
 
@@ -432,6 +485,13 @@ class MainThing {
           data.title = tabTitle
         }
       }
+    } else if FIREFOX_BROWSERS.contains(applicationName) {
+      debug("Firefox-based browser detected, extracting URL from accessibility tree")
+
+      // note: private windows are not hidden here (unlike the Chrome incognito
+      // branch) — Gecko does not mark them in the accessibility tree, and their
+      // window titles carry a "Private Browsing" suffix for rules to match
+      data.url = geckoURL(window: axElement)
     }
 
     if excludeTitle || titleShouldBeExcluded(data.title) {
