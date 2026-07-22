@@ -1,6 +1,6 @@
 .PHONY: build test package clean
 
-MACOSX_DEPLOYMENT_TARGET ?= 14.0
+MACOSX_DEPLOYMENT_TARGET ?= 12.0
 
 build:
 	poetry install
