@@ -496,6 +496,9 @@ class MainThing {
 
     if excludeTitle || titleShouldBeExcluded(data.title) {
       data.title = "excluded"
+      // the URL identifies the page at least as precisely as the title does,
+      // so an excluded window must not report it either
+      data.url = nil
     }
 
     let heartbeat = Heartbeat(timestamp: nowTime, data: data)
