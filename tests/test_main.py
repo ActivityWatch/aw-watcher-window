@@ -1,6 +1,8 @@
 import re
 from types import SimpleNamespace
 
+import pytest
+
 import aw_watcher_window.main as main_module
 from aw_watcher_window.macos_cli import build_swift_command
 
@@ -195,3 +197,18 @@ def test_legacy_exclude_titles_still_apply_without_research_mode():
     )
 
     assert transformed == {"app": "Chrome", "title": "excluded"}
+
+
+@pytest.mark.parametrize(
+    "poll_time,expected_pulsetime",
+    [
+        (1.0, 2.0),
+        (2.0, 3.0),
+        (5.0, 7.5),
+        (10.0, 15.0),
+    ],
+)
+def test_pulsetime_scales_with_poll_time(
+    poll_time: float, expected_pulsetime: float
+):
+    assert main_module.compute_pulsetime(poll_time) == expected_pulsetime
