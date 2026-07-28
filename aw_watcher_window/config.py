@@ -8,6 +8,9 @@ exclude_title = false
 exclude_titles = []
 poll_time = 1.0
 strategy_macos = "swift"
+research_enabled = false
+
+[aw-watcher-window.research_category_map]
 """.strip()
 
 
@@ -22,6 +25,7 @@ def parse_args():
     default_exclude_title = config["exclude_title"]
     default_exclude_titles = config["exclude_titles"]
     default_strategy_macos = config["strategy_macos"]
+    default_research_enabled = config.get("research_enabled", False)
 
     parser = argparse.ArgumentParser(
         description="A cross platform window watcher for Activitywatch.\nSupported on: Linux (X11), macOS and Windows."
@@ -53,5 +57,20 @@ def parse_args():
         choices=["jxa", "applescript", "swift"],
         help="(macOS only) strategy to use for retrieving the active window",
     )
+    research_group = parser.add_mutually_exclusive_group()
+    research_group.add_argument(
+        "--research",
+        dest="research_enabled",
+        action="store_true",
+        default=default_research_enabled,
+        help="Enable Research Edition mode: browser titles are classified into study categories, non-browser titles are dropped. Category map must be set in the config file.",
+    )
+    research_group.add_argument(
+        "--no-research",
+        dest="research_enabled",
+        action="store_false",
+        help="Disable Research Edition mode, even when enabled in the config file.",
+    )
     parsed_args = parser.parse_args()
+    parsed_args.research_category_map = dict(config.get("research_category_map", {}))
     return parsed_args

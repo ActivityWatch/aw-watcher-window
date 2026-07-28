@@ -36,7 +36,7 @@ jobs:
         pip install poetry==1.3.2  
         source venv/bin/activate || source venv/Scripts/activate
         if [ "${{ runner.os }}" = "macOS" ]; then
-          MACOSX_DEPLOYMENT_TARGET=14.0 make build
+          MACOSX_DEPLOYMENT_TARGET=12.0 make build
         else
           make build
         fi
@@ -44,7 +44,7 @@ jobs:
       if: runner.os == 'macOS'
       shell: bash
       run: |
-        otool -l aw_watcher_window/aw-watcher-window-macos | grep -A4 'LC_BUILD_VERSION' | grep 'minos 14.0'
+        otool -l aw_watcher_window/aw-watcher-window-macos | grep -A4 'LC_BUILD_VERSION' | grep 'minos 12.0'
     - name: Run tests
       shell: bash
       run: |
@@ -55,7 +55,7 @@ jobs:
       run: |
         source venv/bin/activate || source venv/Scripts/activate
         if [ "${{ runner.os }}" = "macOS" ]; then
-          MACOSX_DEPLOYMENT_TARGET=14.0 make package
+          MACOSX_DEPLOYMENT_TARGET=12.0 make package
         else
           make package
         fi

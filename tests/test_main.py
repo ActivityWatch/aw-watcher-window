@@ -1,7 +1,70 @@
+import re
+from types import SimpleNamespace
+
 import pytest
 
-from aw_watcher_window.main import compute_pulsetime
+import aw_watcher_window.main as main_module
 from aw_watcher_window.macos_cli import build_swift_command
+
+
+def test_research_mode_passes_map_to_macos_swift_strategy(monkeypatch):
+    commands = []
+
+    class FakeProcess:
+        pid = 123
+
+        def wait(self):
+            return None
+
+    class FakeClient:
+        client_name = "aw-watcher-window"
+        client_hostname = "host.localdomain"
+        server_address = "http://localhost:5600"
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def create_bucket(self, *args, **kwargs):
+            pass
+
+        def wait_for_start(self):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(main_module.sys, "platform", "darwin")
+    monkeypatch.setattr(main_module, "background_ensure_permissions", lambda: None)
+    monkeypatch.setattr(main_module, "setup_logging", lambda **kwargs: None)
+    monkeypatch.setattr(main_module, "ActivityWatchClient", FakeClient)
+    monkeypatch.setattr(main_module.signal, "signal", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        main_module.subprocess,
+        "Popen",
+        lambda command: commands.append(command) or FakeProcess(),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "parse_args",
+        lambda: SimpleNamespace(
+            testing=True,
+            verbose=False,
+            host=None,
+            port=None,
+            strategy="swift",
+            exclude_title=False,
+            exclude_titles=[],
+            research_enabled=True,
+            research_category_map={"youtube": "Youtube"},
+        ),
+    )
+
+    main_module.main()
+
+    assert commands[0][-4:] == ["--research", "--research-category", "youtube", "Youtube"]
 
 
 def test_build_swift_command_omits_optional_filters():
@@ -47,21 +110,105 @@ def test_build_swift_command_passes_title_filters():
     ]
 
 
+def test_build_swift_command_passes_empty_research_map():
+    command = build_swift_command(
+        "/tmp/aw-watcher-window-macos",
+        "http://localhost:5600",
+        "bucket",
+        "host.localdomain",
+        "aw-watcher-window",
+        research_category_map={},
+    )
+
+    assert command == [
+        "/tmp/aw-watcher-window-macos",
+        "http://localhost:5600",
+        "bucket",
+        "host.localdomain",
+        "aw-watcher-window",
+        "--research",
+    ]
+
+
+def test_build_swift_command_passes_research_categories():
+    command = build_swift_command(
+        "/tmp/aw-watcher-window-macos",
+        "http://localhost:5600",
+        "bucket",
+        "host.localdomain",
+        "aw-watcher-window",
+        research_category_map={"youtube": "Youtube", "gmail": "Email"},
+    )
+
+    assert command == [
+        "/tmp/aw-watcher-window-macos",
+        "http://localhost:5600",
+        "bucket",
+        "host.localdomain",
+        "aw-watcher-window",
+        "--research",
+        "--research-category",
+        "youtube",
+        "Youtube",
+        "--research-category",
+        "gmail",
+        "Email",
+    ]
+
+
+def test_research_transform_takes_precedence_over_exclude_titles():
+    window = {
+        "app": "Chrome",
+        "title": "YouTube - Google Chrome",
+        "url": "https://youtube.com/watch?v=abc",
+    }
+
+    transformed = main_module.transform_window(
+        window,
+        exclude_titles=[re.compile("youtube", re.IGNORECASE)],
+        research_category_map={"youtube": "Youtube"},
+    )
+
+    assert transformed == {"app": "Chrome", "title": "Youtube"}
+
+
+def test_research_transform_takes_precedence_over_exclude_title():
+    window = {
+        "app": "Chrome",
+        "title": "YouTube - Google Chrome",
+        "url": "https://youtube.com/watch?v=abc",
+    }
+
+    transformed = main_module.transform_window(
+        window,
+        exclude_title=True,
+        research_category_map={"youtube": "Youtube"},
+    )
+
+    assert transformed == {"app": "Chrome", "title": "Youtube"}
+
+
+def test_legacy_exclude_titles_still_apply_without_research_mode():
+    window = {"app": "Chrome", "title": "YouTube - Google Chrome"}
+
+    transformed = main_module.transform_window(
+        window,
+        exclude_titles=[re.compile("youtube", re.IGNORECASE)],
+    )
+
+    assert transformed == {"app": "Chrome", "title": "excluded"}
+
+
 @pytest.mark.parametrize(
     "poll_time,expected_pulsetime",
     [
-        (1.0, 2.0),   # max(1.5, 2.0)=2.0 — backward compatible, no change
-        (2.0, 3.0),   # max(3.0, 3.0)=3.0 — exact threshold
-        (5.0, 7.5),   # max(7.5, 6.0)=7.5 — fix kicks in (was 6.0, caused ~10% loss)
-        (10.0, 15.0), # max(15.0, 11.0)=15.0 — fix kicks in (was 11.0, caused ~30% loss)
+        (1.0, 2.0),
+        (2.0, 3.0),
+        (5.0, 7.5),
+        (10.0, 15.0),
     ],
 )
-def test_pulsetime_scales_with_poll_time(poll_time: float, expected_pulsetime: float):
-    """pulsetime must scale with poll_time so OS scheduling jitter doesn't break heartbeat chains.
-
-    At poll_time=5s the old formula (poll_time+1=6s) caused ~10% of heartbeat
-    gaps to exceed pulsetime, resulting in missing time. The fix: max(poll_time*1.5,
-    poll_time+1) keeps backward compat at low poll_time while scaling the jitter
-    tolerance at higher values. See: ActivityWatch/activitywatch#1177
-    """
-    assert compute_pulsetime(poll_time) == expected_pulsetime
+def test_pulsetime_scales_with_poll_time(
+    poll_time: float, expected_pulsetime: float
+):
+    assert main_module.compute_pulsetime(poll_time) == expected_pulsetime

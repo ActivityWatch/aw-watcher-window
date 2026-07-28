@@ -14,6 +14,7 @@ from aw_core.models import Event
 from .config import parse_args
 from .exceptions import FatalError
 from .lib import get_current_window
+from .research_filter import transform as research_transform
 from .macos_cli import build_swift_command
 from .macos_permissions import background_ensure_permissions
 
@@ -68,7 +69,6 @@ def main():
         log_stderr=True,
         log_file=True,
     )
-
     if sys.platform == "darwin":
         background_ensure_permissions()
 
@@ -85,6 +85,11 @@ def main():
     client.wait_for_start()
 
     with client:
+        research_category_map = (
+            args.research_category_map
+            if args.research_enabled
+            else None
+        )
         if sys.platform == "darwin" and args.strategy == "swift":
             logger.info("Using swift strategy, calling out to swift binary")
             binpath = os.path.join(
@@ -101,6 +106,7 @@ def main():
                         client.client_name,
                         exclude_title=args.exclude_title,
                         exclude_titles=args.exclude_titles,
+                        research_category_map=research_category_map,
                     )
                 )
                 # terminate swift process when this process dies
@@ -121,11 +127,18 @@ def main():
                     for title in args.exclude_titles
                     if title is not None
                 ],
+                research_category_map=research_category_map,
             )
 
 
 def heartbeat_loop(
-    client, bucket_id, poll_time, strategy, exclude_title=False, exclude_titles=[]
+    client,
+    bucket_id,
+    poll_time,
+    strategy,
+    exclude_title=False,
+    exclude_titles=[],
+    research_category_map=None,
 ):
     while True:
         if os.getppid() == 1:
@@ -159,12 +172,12 @@ def heartbeat_loop(
         if current_window is None:
             logger.debug("Unable to fetch window, trying again on next poll")
         else:
-            for pattern in exclude_titles:
-                if pattern.search(current_window["title"]):
-                    current_window["title"] = "excluded"
-
-            if exclude_title:
-                current_window["title"] = "excluded"
+            current_window = transform_window(
+                current_window,
+                exclude_title=exclude_title,
+                exclude_titles=exclude_titles,
+                research_category_map=research_category_map,
+            )
 
             now = datetime.now(timezone.utc)
             current_window_event = Event(timestamp=now, data=current_window)
@@ -177,3 +190,22 @@ def heartbeat_loop(
             )
 
         sleep(poll_time)
+
+
+def transform_window(
+    current_window,
+    exclude_title=False,
+    exclude_titles=None,
+    research_category_map=None,
+):
+    if research_category_map is not None:
+        return research_transform(current_window, research_category_map)
+
+    for pattern in exclude_titles or []:
+        if pattern.search(current_window["title"]):
+            current_window["title"] = "excluded"
+
+    if exclude_title:
+        current_window["title"] = "excluded"
+
+    return current_window
