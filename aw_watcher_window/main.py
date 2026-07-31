@@ -15,6 +15,7 @@ from aw_core.models import Event
 from .config import parse_args
 from .exceptions import FatalError
 from .lib import get_current_window
+from .privacy_filter import apply_privacy_filters, compile_privacy_rules
 from .research_filter import transform as research_transform
 from .macos_cli import build_swift_command
 from .macos_permissions import background_ensure_permissions
@@ -200,6 +201,9 @@ def main():
         research_app_category_map = (
             args.research_app_category_map if args.research_enabled else None
         )
+        privacy_filter_rules = compile_privacy_rules(
+            getattr(args, "privacy_filter_rules", [])
+        )
         if sys.platform == "darwin" and args.strategy == "swift":
             logger.info("Using swift strategy, calling out to swift binary")
             binpath = os.path.join(
@@ -249,6 +253,7 @@ def main():
                 ],
                 research_category_map=research_category_map,
                 research_app_category_map=research_app_category_map,
+                privacy_filter_rules=privacy_filter_rules,
             )
 
 
@@ -262,6 +267,7 @@ def heartbeat_loop(
     exclude_apps=[],
     research_category_map=None,
     research_app_category_map=None,
+    privacy_filter_rules=None,
 ):
     # State for X display-connection error backoff (Linux only).
     _xconn_error_logged = False
@@ -398,6 +404,7 @@ def heartbeat_loop(
                 exclude_apps=exclude_apps,
                 research_category_map=research_category_map,
                 research_app_category_map=research_app_category_map,
+                privacy_filter_rules=privacy_filter_rules,
             )
 
             if current_window is None:
@@ -407,7 +414,7 @@ def heartbeat_loop(
                 # the preceding event across the excluded interval (a visit
                 # shorter than compute_pulsetime(poll_time) would otherwise be
                 # attributed to the preceding app).
-                logger.debug("Window excluded by exclude_apps, skipping heartbeat")
+                logger.debug("Window excluded (privacy filter or exclude_apps), skipping heartbeat")
                 _chain_broken_by_exclusion = True
             else:
                 now = datetime.now(timezone.utc)
@@ -438,8 +445,15 @@ def transform_window(
     exclude_apps=None,
     research_category_map=None,
     research_app_category_map=None,
+    privacy_filter_rules=None,
 ):
-    # App exclusion is a privacy guarantee and must run before any other
+    # Privacy filter runs first — sensitive events never reach other transforms
+    if privacy_filter_rules:
+        current_window = apply_privacy_filters(current_window, privacy_filter_rules)
+        if current_window is None:
+            return None
+
+    # App exclusion is also a privacy guarantee and must run before any other
     # transform, including research mode — a matching app must never be logged.
     for pattern in exclude_apps or []:
         if pattern.search(current_window.get("app", "")):

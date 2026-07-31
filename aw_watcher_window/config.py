@@ -122,4 +122,5 @@ def parse_args():
         parser.error("exclude_apps must be a string or a list of strings")
     parsed_args.research_category_map = dict(config.get("research_category_map", {}))
     parsed_args.research_app_category_map = dict(config.get("research_app_category_map", {}))
+    parsed_args.privacy_filter_rules = list(config.get("privacy_filter", []))
     return parsed_args
