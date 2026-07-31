@@ -42,6 +42,11 @@ def test_compile_invalid_regex_skipped():
     assert rules == []
 
 
+def test_compile_non_string_pattern_skipped():
+    rules = compile_privacy_rules([{"pattern": 123, "action": "drop"}])
+    assert rules == []
+
+
 def test_compile_unknown_action_skipped():
     rules = compile_privacy_rules([{"pattern": "foo", "action": "transform"}])
     assert rules == []

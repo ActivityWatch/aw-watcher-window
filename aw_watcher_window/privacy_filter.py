@@ -58,7 +58,7 @@ def compile_privacy_rules(raw_rules: list) -> list:
 
         try:
             pattern = re.compile(pattern_str)
-        except re.error as exc:
+        except (re.error, TypeError) as exc:
             logger.error(
                 "privacy_filter: invalid regex %r — %s — rule skipped", pattern_str, exc
             )
