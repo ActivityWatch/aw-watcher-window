@@ -14,6 +14,7 @@ from aw_core.models import Event
 from .config import parse_args
 from .exceptions import FatalError
 from .lib import get_current_window
+from .privacy_filter import apply_privacy_filters, compile_privacy_rules
 from .research_filter import transform as research_transform
 from .macos_cli import build_swift_command
 from .macos_permissions import background_ensure_permissions
@@ -95,6 +96,9 @@ def main():
             if args.research_enabled
             else None
         )
+        privacy_filter_rules = compile_privacy_rules(
+            getattr(args, "privacy_filter_rules", [])
+        )
         if sys.platform == "darwin" and args.strategy == "swift":
             logger.info("Using swift strategy, calling out to swift binary")
             binpath = os.path.join(
@@ -135,6 +139,7 @@ def main():
                 ],
                 research_category_map=research_category_map,
                 research_app_category_map=research_app_category_map,
+                privacy_filter_rules=privacy_filter_rules,
             )
 
 
@@ -147,6 +152,7 @@ def heartbeat_loop(
     exclude_titles=[],
     research_category_map=None,
     research_app_category_map=None,
+    privacy_filter_rules=None,
 ):
     while True:
         if os.getppid() == 1:
@@ -186,17 +192,21 @@ def heartbeat_loop(
                 exclude_titles=exclude_titles,
                 research_category_map=research_category_map,
                 research_app_category_map=research_app_category_map,
+                privacy_filter_rules=privacy_filter_rules,
             )
 
-            now = datetime.now(timezone.utc)
-            current_window_event = Event(timestamp=now, data=current_window)
+            if current_window is None:
+                logger.debug("Event dropped by privacy filter, skipping heartbeat")
+            else:
+                now = datetime.now(timezone.utc)
+                current_window_event = Event(timestamp=now, data=current_window)
 
-            client.heartbeat(
-                bucket_id,
-                current_window_event,
-                pulsetime=compute_pulsetime(poll_time),
-                queued=True,
-            )
+                client.heartbeat(
+                    bucket_id,
+                    current_window_event,
+                    pulsetime=compute_pulsetime(poll_time),
+                    queued=True,
+                )
 
         sleep(poll_time)
 
@@ -207,7 +217,14 @@ def transform_window(
     exclude_titles=None,
     research_category_map=None,
     research_app_category_map=None,
+    privacy_filter_rules=None,
 ):
+    # Privacy filter runs first — sensitive events never reach other transforms
+    if privacy_filter_rules:
+        current_window = apply_privacy_filters(current_window, privacy_filter_rules)
+        if current_window is None:
+            return None
+
     if research_category_map is not None:
         return research_transform(
             current_window,
