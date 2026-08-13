@@ -11,6 +11,8 @@ strategy_macos = "swift"
 research_enabled = false
 
 [aw-watcher-window.research_category_map]
+
+[aw-watcher-window.research_app_category_map]
 """.strip()
 
 
@@ -73,4 +75,5 @@ def parse_args():
     )
     parsed_args = parser.parse_args()
     parsed_args.research_category_map = dict(config.get("research_category_map", {}))
+    parsed_args.research_app_category_map = dict(config.get("research_app_category_map", {}))
     return parsed_args

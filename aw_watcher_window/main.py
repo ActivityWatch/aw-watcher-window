@@ -90,6 +90,11 @@ def main():
             if args.research_enabled
             else None
         )
+        research_app_category_map = (
+            args.research_app_category_map
+            if args.research_enabled
+            else None
+        )
         if sys.platform == "darwin" and args.strategy == "swift":
             logger.info("Using swift strategy, calling out to swift binary")
             binpath = os.path.join(
@@ -107,6 +112,7 @@ def main():
                         exclude_title=args.exclude_title,
                         exclude_titles=args.exclude_titles,
                         research_category_map=research_category_map,
+                        research_app_category_map=research_app_category_map,
                     )
                 )
                 # terminate swift process when this process dies
@@ -128,6 +134,7 @@ def main():
                     if title is not None
                 ],
                 research_category_map=research_category_map,
+                research_app_category_map=research_app_category_map,
             )
 
 
@@ -139,6 +146,7 @@ def heartbeat_loop(
     exclude_title=False,
     exclude_titles=[],
     research_category_map=None,
+    research_app_category_map=None,
 ):
     while True:
         if os.getppid() == 1:
@@ -177,6 +185,7 @@ def heartbeat_loop(
                 exclude_title=exclude_title,
                 exclude_titles=exclude_titles,
                 research_category_map=research_category_map,
+                research_app_category_map=research_app_category_map,
             )
 
             now = datetime.now(timezone.utc)
@@ -197,9 +206,14 @@ def transform_window(
     exclude_title=False,
     exclude_titles=None,
     research_category_map=None,
+    research_app_category_map=None,
 ):
     if research_category_map is not None:
-        return research_transform(current_window, research_category_map)
+        return research_transform(
+            current_window,
+            research_category_map,
+            app_category_map=research_app_category_map,
+        )
 
     for pattern in exclude_titles or []:
         if pattern.search(current_window["title"]):

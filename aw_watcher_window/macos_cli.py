@@ -7,6 +7,7 @@ def build_swift_command(
     exclude_title=False,
     exclude_titles=None,
     research_category_map=None,
+    research_app_category_map=None,
 ):
     command = [binpath, server_address, bucket_id, client_hostname, client_name]
     if exclude_title:
@@ -17,4 +18,6 @@ def build_swift_command(
         command.append("--research")
         for pattern, category in research_category_map.items():
             command.extend(["--research-category", pattern, category])
+        for app_name, category in (research_app_category_map or {}).items():
+            command.extend(["--research-app-category", app_name, category])
     return command
