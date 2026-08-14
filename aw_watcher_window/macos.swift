@@ -290,9 +290,13 @@ func applyResearchFilter(_ data: NetworkMessage) -> NetworkMessage {
   }
 
   // Non-browser: map app to study category when a map is provided;
-  // otherwise title is nil (legacy behaviour: app name kept, title dropped).
-  let appCategory: String? = researchAppCategoryMap.isEmpty ? nil : classifyApp(data.app)
-  return NetworkMessage(app: data.app, title: appCategory, url: nil)
+  // otherwise keep app name and drop title (legacy behaviour).
+  if researchAppCategoryMap.isEmpty {
+    return NetworkMessage(app: data.app, title: nil, url: nil)
+  }
+  // Replace the raw app identity with its category — the app name is the
+  // sensitive identifier for non-browser apps, so it must not be retained.
+  return NetworkMessage(app: classifyApp(data.app), title: nil, url: nil)
 }
 
 func start() {

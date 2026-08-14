@@ -59,6 +59,7 @@ def test_research_mode_passes_map_to_macos_swift_strategy(monkeypatch):
             exclude_titles=[],
             research_enabled=True,
             research_category_map={"youtube": "Youtube"},
+            research_app_category_map={},
         ),
     )
 

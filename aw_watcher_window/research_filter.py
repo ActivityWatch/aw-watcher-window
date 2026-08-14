@@ -86,15 +86,20 @@ def classify_app(app: str, app_category_map: dict) -> str:
     Classify a non-browser application into a study category.
 
     Performs a case-insensitive exact lookup of *app* in *app_category_map*
-    (``{app_name: category_name}``).  Returns the mapped category, or
-    ``"Excluded"`` when the app is not in the map.
+    (``{app_name: category_name}``).  Both the lookup key and the configured
+    keys are normalized to lowercase, so mixed-case map keys (e.g. ``"Microsoft
+    Outlook"``) match their lowercase application names.  Returns the mapped
+    category, or ``"Excluded"`` when the app is not in the map.
 
     Note: uses capital-E ``"Excluded"`` to match Matthias's original classifier
     convention (``EXCLUDED = "Excluded"``), distinct from the lowercase
     ``"excluded"`` used for browser title mismatches.
     """
     app_lower = app.strip().lower()
-    return app_category_map.get(app_lower, "Excluded")
+    for map_app, category in app_category_map.items():
+        if map_app.strip().lower() == app_lower:
+            return category
+    return "Excluded"
 
 
 def transform(
@@ -133,9 +138,16 @@ def transform(
     else:
         # Non-browser: map app to a study category when a map is provided,
         # otherwise keep the raw app name and drop the title.
-        if app_category_map is not None:
+        # An empty map is treated as "not provided" — so research_enabled with
+        # no configured app map falls back to legacy behaviour instead of
+        # classifying every non-browser app as "Excluded".
+        if app_category_map:
             app_category = classify_app(app, app_category_map)
-            result = {"app": app, "title": app_category}
+            # Replace the raw app identity with its category: the app name is
+            # the sensitive identifier for non-browser apps (e.g. "Microsoft
+            # Outlook", a niche tool, a company-internal app), so it must not
+            # be retained. Title/URL are dropped entirely.
+            result = {"app": app_category}
         else:
             # Legacy behaviour: title dropped, app name kept as-is.
             result = {"app": app}
