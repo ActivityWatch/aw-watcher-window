@@ -271,9 +271,14 @@ func classifyResearch(_ title: String, url: String?) -> String {
 func classifyApp(_ app: String) -> String {
   // Case-insensitive exact lookup of app name in the app category map.
   // Returns the mapped category, or "Excluded" when the app is not in the map.
+  // Both sides are trimmed and lowercased so a configured key carrying stray
+  // whitespace matches identically here and in the Python path
+  // (research_filter.classify_app). Without trimming the configured key, a map
+  // entry like " Microsoft Outlook" would classify on Linux/Windows but fall
+  // through to "Excluded" on the macOS Swift path for the same config.
   let appLower = app.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
   for item in researchAppCategoryMap {
-    if item.app.lowercased() == appLower {
+    if item.app.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == appLower {
       return item.category
     }
   }
