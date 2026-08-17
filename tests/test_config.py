@@ -1,3 +1,5 @@
+import pathlib
+import re
 import sys
 
 import tomlkit
@@ -56,10 +58,21 @@ def test_research_edition_sed_target_is_intact():
     this module. That target lives in another repo, so pin it here — otherwise
     reformatting research_defaults silently breaks the Research Edition build.
     """
-    assert "\nresearch_enabled = false" in "\n" + config_module.research_defaults
+    # Check the source FILE, not the evaluated string. sed anchors on ^...$ in
+    # the file, so an indented `    research_enabled = false` inside the literal
+    # still strips to the same value — the string-level check would stay green
+    # while the release build broke.
+    source = pathlib.Path(config_module.__file__).read_text()
+    assert re.search(
+        r"^research_enabled = false$", source, re.MULTILINE
+    ), "Research Edition sed target moved or got indented; see release.yml"
 
-    patched = config_module.research_defaults.replace(
-        "research_enabled = false", "research_enabled = true"
+    # ...and the flip the release build performs must yield an enabled template.
+    patched = re.sub(
+        r"^research_enabled = false$",
+        "research_enabled = true",
+        config_module.research_defaults,
+        flags=re.MULTILINE,
     )
     assert tomlkit.parse(patched)["research_enabled"] is True
 
