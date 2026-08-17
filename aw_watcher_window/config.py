@@ -94,4 +94,5 @@ def parse_args():
     parsed_args = parser.parse_args()
     parsed_args.research_category_map = dict(config.get("research_category_map", {}))
     parsed_args.research_app_category_map = dict(config.get("research_app_category_map", {}))
+    parsed_args.privacy_filter_rules = list(config.get("privacy_filter", []))
     return parsed_args
