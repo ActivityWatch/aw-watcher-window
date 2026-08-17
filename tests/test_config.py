@@ -67,14 +67,30 @@ def test_research_edition_sed_target_is_intact():
         r"^research_enabled = false$", source, re.MULTILINE
     ), "Research Edition sed target moved or got indented; see release.yml"
 
-    # ...and the flip the release build performs must yield an enabled template.
-    patched = re.sub(
+    # Simulate what release.yml sed actually does: apply the replacement to the
+    # source FILE and confirm the patched line appears at column 0.  Checking the
+    # runtime string (research_defaults) alone is insufficient — .strip() would
+    # return the same value even if the source line is indented, keeping this
+    # assertion green while the real sed-on-source would silently fail to match.
+    patched_source = re.sub(
+        r"^research_enabled = false$",
+        "research_enabled = true",
+        source,
+        flags=re.MULTILINE,
+    )
+    assert re.search(r"^research_enabled = true$", patched_source, re.MULTILINE), (
+        "sed patch did not produce 'research_enabled = true' in source"
+    )
+    # Also verify the patched value is structurally valid TOML with the flag set.
+    # The triple-quoted literal's runtime value is equivalent to the source content
+    # (both are stripped of surrounding whitespace), so we can reuse it here.
+    patched_defaults = re.sub(
         r"^research_enabled = false$",
         "research_enabled = true",
         config_module.research_defaults,
         flags=re.MULTILINE,
     )
-    assert tomlkit.parse(patched)["research_enabled"] is True
+    assert tomlkit.parse(patched_defaults)["research_enabled"] is True
 
 
 def test_parse_args_defaults_research_off_without_config(tmp_path, monkeypatch):
