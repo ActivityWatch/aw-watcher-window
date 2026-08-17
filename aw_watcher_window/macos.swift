@@ -127,6 +127,7 @@ var excludeTitle = false
 var excludeTitlePatterns: [NSRegularExpression] = []
 var researchEnabled = false
 var researchCategoryMap: [(pattern: String, category: String)] = []
+var researchAppCategoryMap: [(app: String, category: String)] = []
 
 let researchBrowserApps = Set([
   "chrome",
@@ -222,6 +223,18 @@ func parseOptionalArguments(_ arguments: ArraySlice<String>) {
       continue
     }
 
+    if argument == "--research-app-category" {
+      let appIndex = arguments.index(after: index)
+      let categoryIndex = appIndex < arguments.endIndex ? arguments.index(after: appIndex) : arguments.endIndex
+      guard appIndex < arguments.endIndex, categoryIndex < arguments.endIndex else {
+        error("Missing app/category values for --research-app-category")
+        exit(1)
+      }
+      researchAppCategoryMap.append((app: arguments[appIndex], category: arguments[categoryIndex]))
+      index = arguments.index(after: categoryIndex)
+      continue
+    }
+
     error("Unknown argument: \(argument)")
     exit(1)
   }
@@ -255,6 +268,23 @@ func classifyResearch(_ title: String, url: String?) -> String {
   return "excluded"
 }
 
+func classifyApp(_ app: String) -> String {
+  // Case-insensitive exact lookup of app name in the app category map.
+  // Returns the mapped category, or "Excluded" when the app is not in the map.
+  // Both sides are trimmed and lowercased so a configured key carrying stray
+  // whitespace matches identically here and in the Python path
+  // (research_filter.classify_app). Without trimming the configured key, a map
+  // entry like " Microsoft Outlook" would classify on Linux/Windows but fall
+  // through to "Excluded" on the macOS Swift path for the same config.
+  let appLower = app.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+  for item in researchAppCategoryMap {
+    if item.app.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == appLower {
+      return item.category
+    }
+  }
+  return "Excluded"
+}
+
 func applyResearchFilter(_ data: NetworkMessage) -> NetworkMessage {
   if !researchEnabled {
     return data
@@ -264,7 +294,14 @@ func applyResearchFilter(_ data: NetworkMessage) -> NetworkMessage {
     return NetworkMessage(app: data.app, title: classifyResearch(data.title ?? "", url: data.url), url: nil)
   }
 
-  return NetworkMessage(app: data.app, title: nil, url: nil)
+  // Non-browser: map app to study category when a map is provided;
+  // otherwise keep app name and drop title (legacy behaviour).
+  if researchAppCategoryMap.isEmpty {
+    return NetworkMessage(app: data.app, title: nil, url: nil)
+  }
+  // Replace the raw app identity with its category — the app name is the
+  // sensitive identifier for non-browser apps, so it must not be retained.
+  return NetworkMessage(app: classifyApp(data.app), title: nil, url: nil)
 }
 
 func start() {
@@ -277,7 +314,7 @@ func start() {
 
   // Check that we get the 4 required arguments plus any optional flags
   if arguments.count < 5 {
-    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client> [--exclude-title] [--exclude-titles <pattern> ...] [--research] [--research-category <pattern> <category> ...]")
+    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client> [--exclude-title] [--exclude-titles <pattern> ...] [--research] [--research-category <pattern> <category> ...] [--research-app-category <app_name> <category> ...]")
     exit(1)
   }
 
