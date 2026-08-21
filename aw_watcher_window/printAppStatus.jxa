@@ -23,37 +23,73 @@ var url = undefined, incognito = undefined, title = undefined;
 switch(appName) {
   case "Safari":
     // incognito is not available via safari applescript
+    try { // see catch for details
     url = Application(appName).documents[0].url();
-    title = Application(appName).documents[0].name();
+	  title = Application(appName).documents[0].name();
+    } catch {
+      // On Mac, you can have an application open without a window.
+      // You can also have safari open with just a Devtools window, meaning no documents
+      // This edge-case previously caused an error meaning time wasn't tracked.
+      // I'm not 100% that a title of "No window" is the right approach, but it is the clearest description of what's happening I can see right now.
+      title = "No window" 
+    };
     break;
-  case "Google Chrome":
+  case "Google Chrome": 
   case "Google Chrome Canary":
   case "Chromium":
   case "Brave Browser":
-    const activeWindow = Application(appName).windows[0];
-    const activeTab = activeWindow.activeTab();
+    try { // see catch for details
+      
+      const activeWindow = Application(appName).windows[0];
+      const activeTab = activeWindow.activeTab();
 
-    url = activeTab.url();
-    title = activeTab.name();
-    incognito = activeWindow.mode() === 'incognito';
+      url = activeTab.url();
+      title = activeTab.name();
+      incognito = activeWindow.mode() === 'incognito';
+    } catch {
+      // On Mac, you can have an application open without a window.
+      // This edge-case previously caused an error meaning time wasn't tracked.
+      // I'm not 100% that a title of "No window" is the right approach, but it is the clearest description of what's happening I can see right now.
+      title = "No window"
+    };
     break;
   case "Firefox":
   case "Firefox Developer Edition":
     title = Application(appName).windows[0].name();
     break;
   default:
-    mainWindow = oProcess.
-      windows().
-      find(w => w.attributes.byName("AXMain").value() === true)
+    // Some applications aren't "scriptable" according to JXA/applescript, and so you can't get their attributes or properties.
+    // This was leading the original script to fail at executing, both when setting mainWindow and later when setting title.
+    // This meant that everything for that window was recorded as unknown.
+    // To fix this, I first try to get the window the old way, and if this fails then to get the name of the frontmost window as the title.
+    // This works very well, it seems to get appName and title accurately, and avoids failing to execute and getting Unknown app names.
+    try {
+      mainWindow = oProcess.windows().find((w, i) => w && w.attributes && w.attributes() && w.attributes.byName("AXMain") && w.attributes.byName("AXMain").value() === true)
+    } catch {
+      try { // see catch for details
+        mainWindow = oProcess.windows()[0]
+      } catch {
+        // On Mac, you can have an application open without a window.
+        // This edge-case previously caused an error meaning time wasn't tracked.
+        // I'm not 100% that a title of "No window" is the right approach, but it is the clearest description of what's happening I can see right now.
+        title = "No window";
+        break;
+        }
+    };
+    
 
     // in some cases, the primary window of an application may not be found
     // this occurs rarely and seems to be triggered by switching to a different application
-    if(mainWindow) {
-      title = mainWindow.
-        attributes.
+    // NEW: I believe the above issue is fixed by the new try-catch structure below which falls back to the name of the frontmost window as the title.
+    try {
+      title = mainWindow && mainWindow.
+        attributes && mainWindow.attributes.
         byName("AXTitle").
         value()
-    }
+    } catch {
+      title = oProcess.windows[0].name()
+    };
+
 }
 
 // key names must match expected names in lib.py
