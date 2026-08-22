@@ -492,6 +492,17 @@ class MainThing {
       // branch) — Gecko does not mark them in the accessibility tree, and their
       // window titles carry a "Private Browsing" suffix for rules to match
       data.url = geckoURL(window: axElement)
+
+      if data.url == nil {
+        // Newer Gecko builds instantiate their accessibility engine lazily and
+        // no longer treat plain tree walks as an assistive client, leaving the
+        // window's AX tree without any web content. Requesting
+        // AXEnhancedUserInterface (as VoiceOver does) turns the engine on; the
+        // call may report an error while the engine spins up, but the tree is
+        // populated for subsequent polls and stays on for the browser session.
+        let axApp = AXUIElementCreateApplication(frontmost.processIdentifier)
+        AXUIElementSetAttributeValue(axApp, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+      }
     }
 
     if excludeTitle || titleShouldBeExcluded(data.title) {
