@@ -512,6 +512,14 @@ class MainThing {
     "Floorp",
   ]
 
+  // Electron apps draw their whole interface as web content and leave the
+  // native window title fixed, so the window title identifies the app but not
+  // what is open in it. The document title they set per view is on the
+  // accessibility tree's AXWebArea node, the same place Gecko keeps the URL.
+  let ELECTRON_APPS = [
+    "Claude",
+  ]
+
   // upper bound on accessibility elements examined per lookup, so a
   // pathological tree can't stall the watcher (the web area is typically
   // found within a few dozen elements)
@@ -541,6 +549,37 @@ class MainThing {
         // no URL on the web area (e.g. page still loading); stop rather than
         // keep searching, since a deeper hit would be an iframe's web area
         return axString(urlRef)
+      }
+
+      var childrenRef: AnyObject?
+      AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef)
+      if let children = childrenRef as? [AXUIElement] {
+        queue.append(contentsOf: children)
+      }
+    }
+    return nil
+  }
+
+  // Search the window's accessibility tree breadth-first for the AXWebArea
+  // node of the app's own content and return its AXTitle, the document title.
+  // Electron nests that web area inside the one for the bundled shell page,
+  // which is reached first but carries no document title, so the first titled
+  // web area is the app's current view rather than its shell.
+  func electronDocumentTitle(window: AXUIElement) -> String? {
+    var queue: [AXUIElement] = [window]
+    var index = 0
+    while index < queue.count && index < AX_TRAVERSAL_LIMIT {
+      let element = queue[index]
+      index += 1
+
+      var roleRef: AnyObject?
+      AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
+      if roleRef as? String == "AXWebArea" {
+        var titleRef: AnyObject?
+        AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &titleRef)
+        if let title = titleRef as? String, !title.isEmpty {
+          return title
+        }
       }
 
       var childrenRef: AnyObject?
@@ -681,6 +720,21 @@ class MainThing {
         // populated for subsequent polls and stays on for the browser session.
         let axApp = AXUIElementCreateApplication(frontmost.processIdentifier)
         AXUIElementSetAttributeValue(axApp, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
+      }
+    } else if ELECTRON_APPS.contains(applicationName) {
+      debug("Electron app detected, extracting title from accessibility tree")
+
+      if let documentTitle = electronDocumentTitle(window: axElement) {
+        // the document title names the open view, where the window title only
+        // ever names the app
+        data.title = documentTitle
+      } else {
+        // Chromium builds its accessibility tree only once an assistive client
+        // asks for it. Setting AXManualAccessibility (which Electron exposes
+        // for exactly this) turns it on; the tree is not ready on this pass but
+        // is populated for subsequent polls and stays on for the app's session.
+        let axApp = AXUIElementCreateApplication(frontmost.processIdentifier)
+        AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, kCFBooleanTrue)
       }
     }
 
