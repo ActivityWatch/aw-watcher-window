@@ -591,6 +591,132 @@ class MainThing {
     return nil
   }
 
+  // Some Electron views set no document title at all (Claude Code sessions are
+  // one), leaving the name of what is open only on the header controls. Two of
+  // them name it: the button that renames it, and the menu that acts on it.
+  // Their accessibility descriptions wrap that name in different wording, so the
+  // name is the longest prefix of the button's description that also occurs in a
+  // menu's. Recovering it by overlap rather than by matching known wording keeps
+  // this working on localized builds, and yields nothing rather than something
+  // wrong when the view has no name to give.
+  func electronHeaderTitle(window: AXUIElement) -> String? {
+    var examined = 0
+
+    // The complementary landmark is the sidebar, which lists every other
+    // session and would otherwise be searched before the open one's header.
+    guard let main = firstLandmark(window, skipping: "AXLandmarkComplementary",
+                                   looking_for: "AXLandmarkMain", examined: &examined)
+    else { return nil }
+
+    var buttonDescriptions: [String] = []
+    var menuDescriptions: [String] = []
+    var queue: [AXUIElement] = [main]
+    var index = 0
+    while index < queue.count && examined < AX_TRAVERSAL_LIMIT {
+      let element = queue[index]
+      index += 1
+      examined += 1
+
+      // the message feed repeats per-message action controls, which describe
+      // messages rather than the view, so it is skipped rather than searched
+      var subroleRef: AnyObject?
+      AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleRef)
+      if subroleRef as? String == "AXApplicationGroup" { continue }
+
+      var roleRef: AnyObject?
+      AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
+      let role = roleRef as? String
+      if role == "AXButton" || role == "AXPopUpButton" {
+        var descriptionRef: AnyObject?
+        AXUIElementCopyAttributeValue(element, kAXDescriptionAttribute as CFString, &descriptionRef)
+        if let description = descriptionRef as? String, !description.isEmpty {
+          if role == "AXButton" {
+            buttonDescriptions.append(description)
+          } else {
+            menuDescriptions.append(description)
+          }
+        }
+      }
+
+      var childrenRef: AnyObject?
+      AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef)
+      if let children = childrenRef as? [AXUIElement] {
+        queue.append(contentsOf: children)
+      }
+    }
+
+    // Which control renames the view is not knowable in advance - the header
+    // also holds window chrome whose descriptions come first - so every button
+    // is tried against every menu and the longest overlap wins. Unrelated
+    // controls share at most an incidental word, where the pair that names the
+    // view shares the whole of it.
+    var best: String?
+    for labelled in buttonDescriptions {
+      for mentioned in menuDescriptions {
+        if let name = longestSharedPrefix(of: labelled, occurringIn: mentioned),
+           name.count > (best?.count ?? 0) {
+          best = name
+        }
+      }
+    }
+    return best
+  }
+
+  // Breadth-first search for a landmark subrole, leaving out one whose subtree
+  // is known not to hold the answer.
+  func firstLandmark(
+    _ window: AXUIElement,
+    skipping: String,
+    looking_for: String,
+    examined: inout Int
+  ) -> AXUIElement? {
+    var queue: [AXUIElement] = [window]
+    var index = 0
+    while index < queue.count && examined < AX_TRAVERSAL_LIMIT {
+      let element = queue[index]
+      index += 1
+      examined += 1
+
+      var subroleRef: AnyObject?
+      AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleRef)
+      let subrole = subroleRef as? String
+      if subrole == skipping { continue }
+      if subrole == looking_for { return element }
+
+      var childrenRef: AnyObject?
+      AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef)
+      if let children = childrenRef as? [AXUIElement] {
+        queue.append(contentsOf: children)
+      }
+    }
+    return nil
+  }
+
+  // The longest prefix of `labelled` that also appears anywhere in `mentioned`,
+  // which for two descriptions built around the same name is that name.
+  //
+  // The overlap has to be shorter than both descriptions. Each control wraps the
+  // name in wording of its own, so the name is a proper part of either one; an
+  // overlap equal to a whole description means that control added no wording and
+  // merely happens to begin the other. A control labelled "Add" beside one
+  // labelled "Add files" is such a pair, and was reported as a view's name until
+  // this required the overlap to be proper.
+  func longestSharedPrefix(of labelled: String, occurringIn mentioned: String) -> String? {
+    var end = labelled.endIndex
+    while end > labelled.startIndex {
+      let candidate = String(labelled[labelled.startIndex..<end])
+      if candidate.count >= 3 && candidate.count < mentioned.count
+          && mentioned.contains(candidate) {
+        let name = candidate.trimmingCharacters(in: CharacterSet(charactersIn: " ,-\u{2014}"))
+        if name.count >= 3 && name.count < labelled.count && name.count < mentioned.count {
+          return name
+        }
+      }
+      end = labelled.index(before: end)
+    }
+    return nil
+  }
+
   @objc func pollActiveWindow() {
     debug("Polling active window")
 
@@ -724,10 +850,21 @@ class MainThing {
     } else if ELECTRON_APPS.contains(applicationName) {
       debug("Electron app detected, extracting title from accessibility tree")
 
-      if let documentTitle = electronDocumentTitle(window: axElement) {
+      let documentTitle = electronDocumentTitle(window: axElement)
+
+      // A document title that only repeats the application name names the app
+      // rather than the view, so it is no more use than the window title. That
+      // is compared against the application name and not against the window
+      // title, because the window title is not always readable and an empty one
+      // would otherwise make any document title look informative.
+      if let documentTitle, documentTitle != applicationName {
         // the document title names the open view, where the window title only
         // ever names the app
         data.title = documentTitle
+      } else if let headerTitle = electronHeaderTitle(window: axElement) {
+        // no document title to distinguish this view, so fall back to the
+        // header controls
+        data.title = headerTitle
       } else {
         // Chromium builds its accessibility tree only once an assistive client
         // asks for it. Setting AXManualAccessibility (which Electron exposes
