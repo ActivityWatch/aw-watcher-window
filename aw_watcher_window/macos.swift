@@ -520,6 +520,18 @@ class MainThing {
     "Claude",
   ]
 
+  // Other Electron apps name the open view in a title field that edits it in
+  // place rather than in a document title, so they are looked up differently.
+  let ELECTRON_TITLE_FIELD_APPS = [
+    "Joplin",
+  ]
+
+  // A title field is chrome sitting directly in the view's header, so the search
+  // for one is kept shallow: anything deeper belongs to the content and must not
+  // be mistaken for a title, and a view that has no title field then costs a few
+  // elements rather than a full traversal before the next lookup is tried.
+  let TITLE_FIELD_DEPTH = 3
+
   // upper bound on accessibility elements examined per lookup, so a
   // pathological tree can't stall the watcher (the web area is typically
   // found within a few dozen elements)
@@ -717,6 +729,49 @@ class MainThing {
     return nil
   }
 
+  // A view whose name is edited in place keeps it in a text field at the top of
+  // the view instead of in a document title - Joplin's note title is one - so
+  // the value of that field names the view.
+  func electronTitleFieldValue(window: AXUIElement) -> String? {
+    var examined = 0
+    guard let main = firstLandmark(window, skipping: "AXLandmarkComplementary",
+                                   looking_for: "AXLandmarkMain", examined: &examined)
+    else { return nil }
+
+    var queue: [(element: AXUIElement, depth: Int)] = [(main, 0)]
+    var index = 0
+    while index < queue.count && examined < AX_TRAVERSAL_LIMIT {
+      let (element, depth) = queue[index]
+      index += 1
+      examined += 1
+
+      var roleRef: AnyObject?
+      AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
+      if roleRef as? String == "AXTextField" {
+        var subroleRef: AnyObject?
+        AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleRef)
+        // a search field is header chrome too, but names the query typed into it
+        // rather than the view it sits in
+        if subroleRef as? String != "AXSearchField" {
+          var valueRef: AnyObject?
+          AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &valueRef)
+          if let value = valueRef as? String, !value.isEmpty {
+            return value
+          }
+        }
+      }
+
+      if depth < TITLE_FIELD_DEPTH {
+        var childrenRef: AnyObject?
+        AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef)
+        if let children = childrenRef as? [AXUIElement] {
+          queue.append(contentsOf: children.map { ($0, depth + 1) })
+        }
+      }
+    }
+    return nil
+  }
+
   @objc func pollActiveWindow() {
     debug("Polling active window")
 
@@ -870,6 +925,17 @@ class MainThing {
         // asks for it. Setting AXManualAccessibility (which Electron exposes
         // for exactly this) turns it on; the tree is not ready on this pass but
         // is populated for subsequent polls and stays on for the app's session.
+        let axApp = AXUIElementCreateApplication(frontmost.processIdentifier)
+        AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+      }
+    } else if ELECTRON_TITLE_FIELD_APPS.contains(applicationName) {
+      debug("Electron app with a title field detected, extracting title from accessibility tree")
+
+      if let titleField = electronTitleFieldValue(window: axElement) {
+        // the field the view's name is edited in holds that name
+        data.title = titleField
+      } else {
+        // as above: the tree is built only once an assistive client asks for it
         let axApp = AXUIElementCreateApplication(frontmost.processIdentifier)
         AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, kCFBooleanTrue)
       }
