@@ -166,18 +166,29 @@ let researchBrowserApps = Set([
 let main = MainThing()
 var oldHeartbeat: Heartbeat?
 
-let encoder = JSONEncoder()
-let formatter = ISO8601DateFormatter()
-formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+let formatter: ISO8601DateFormatter = {
+  let formatter = ISO8601DateFormatter()
+  formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+  return formatter
+}()
 
-encoder.dateEncodingStrategy = .custom({ date, encoder in
-  var container = encoder.singleValueContainer()
-  let dateString = formatter.string(from: date)
-  try container.encode(dateString)
-})
+let encoder: JSONEncoder = {
+  let encoder = JSONEncoder()
+  encoder.dateEncodingStrategy = .custom({ date, encoder in
+    var container = encoder.singleValueContainer()
+    let dateString = formatter.string(from: date)
+    try container.encode(dateString)
+  })
+  return encoder
+}()
 
-start()
-RunLoop.main.run()
+@main
+struct ActivityWatchMacOSWatcher {
+  static func main() {
+    start()
+    RunLoop.main.run()
+  }
+}
 
 func compileExcludeTitlePattern(_ pattern: String) -> NSRegularExpression {
   do {
@@ -363,12 +374,12 @@ func start() {
   // listen for changes in focused application
   NSWorkspace.shared.notificationCenter.addObserver(
     main,
-    selector: #selector(main.focusedAppChanged),
+    selector: #selector(main.focusedAppChanged(_:)),
     name: NSWorkspace.didActivateApplicationNotification,
     object: nil
   )
 
-  main.focusedAppChanged()
+  main.reconcileCurrentForegroundApp(source: "startup")
 
   // Start the polling timer
   main.pollingTimer = Timer.scheduledTimer(timeInterval: 10.0, target: main, selector: #selector(main.pollActiveWindow), userInfo: nil, repeats: true)
@@ -461,8 +472,13 @@ func sendHeartbeatSingle(_ heartbeat: Heartbeat, pulsetime: Double) async throws
 
 class MainThing {
   var observer: AXObserver?
+  var foregroundApplication: NSRunningApplication?
   var oldWindow: AXUIElement?
   var pollingTimer: Timer?
+
+  var trackedPID: pid_t? {
+    return foregroundApplication?.processIdentifier
+  }
 
   // list of chrome equivalent browsers
   let CHROME_BROWSERS = [
@@ -525,128 +541,250 @@ class MainThing {
     return nil
   }
 
-  @objc func pollActiveWindow() {
-    debug("Polling active window")
+  func elementPID(_ element: AXUIElement) -> pid_t? {
+    var pid: pid_t = 0
+    return AXUIElementGetPid(element, &pid) == .success ? pid : nil
+  }
 
-    guard let frontmost = NSWorkspace.shared.frontmostApplication else {
-      log("Failed to get frontmost application from polling")
+  @objc func pollActiveWindow() {
+    reconcileCurrentForegroundApp(source: "poll")
+  }
+
+  @objc func focusedAppChanged(_ notification: Notification) {
+    let notificationApplication = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+    if let application = notificationApplication, !application.isTerminated {
+      reconcileForegroundApp(application: application, source: "activation")
+    } else {
+      log("Activation notification lacked a live application; falling back to current foreground app")
+      reconcileCurrentForegroundApp(source: "activation-fallback")
+    }
+  }
+
+  func reconcileCurrentForegroundApp(source: String) {
+    guard let application = NSWorkspace.shared.frontmostApplication, !application.isTerminated else {
+      log("Failed to get a live foreground application from \(source)")
+      return
+    }
+    reconcileForegroundApp(application: application, source: source)
+  }
+
+  func reconcileForegroundApp(application: NSRunningApplication, source: String) {
+    let pid = application.processIdentifier
+    let action = foregroundReconciliationAction(
+      trackedPID: trackedPID,
+      observerAvailable: observer != nil,
+      candidatePID: pid
+    )
+
+    if action == .rebuildObserver {
+      debug("Rebuilding AX observer for pid \(pid) from \(source)")
+      rebuildObserver(for: application)
+    } else {
+      foregroundApplication = application
+    }
+
+    refreshFocusedWindow(for: application)
+  }
+
+  func tearDownObserver() {
+    if let observer = observer {
+      if let oldWindow = oldWindow {
+        AXObserverRemoveNotification(observer, oldWindow, kAXTitleChangedNotification as CFString)
+      }
+      CFRunLoopRemoveSource(
+        RunLoop.current.getCFRunLoop(),
+        AXObserverGetRunLoopSource(observer),
+        CFRunLoopMode.defaultMode
+      )
+    }
+    observer = nil
+    oldWindow = nil
+  }
+
+  func rebuildObserver(for application: NSRunningApplication) {
+    tearDownObserver()
+    foregroundApplication = application
+
+    let pid = application.processIdentifier
+    let focusedApp = AXUIElementCreateApplication(pid)
+    var newObserver: AXObserver?
+    let createResult = AXObserverCreate(
+      pid,
+      {
+        (
+          axObserver: AXObserver,
+          axElement: AXUIElement,
+          notification: CFString,
+          userData: UnsafeMutableRawPointer?
+        ) -> Void in
+        guard let userData = userData else {
+          log("Missing AX observer userData")
+          return
+        }
+        let watcher = Unmanaged<MainThing>.fromOpaque(userData).takeUnretainedValue()
+        watcher.handleAXNotification(
+          observer: axObserver,
+          element: axElement,
+          notification: notification
+        )
+      },
+      &newObserver
+    )
+
+    guard createResult == .success, let newObserver = newObserver else {
+      log("Failed to create AX observer for pid \(pid): \(createResult.rawValue)")
       return
     }
 
-    let pid = frontmost.processIdentifier
-    let focusedApp = AXUIElementCreateApplication(pid)
-
-    var focusedWindow: AnyObject?
-    AXUIElementCopyAttributeValue(focusedApp, kAXFocusedWindowAttribute as CFString, &focusedWindow)
-
-    if focusedWindow != nil {
-      focusedWindowChanged(observer!, window: focusedWindow as! AXUIElement)
+    let selfPtr = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+    let addResult = AXObserverAddNotification(
+      newObserver,
+      focusedApp,
+      kAXFocusedWindowChangedNotification as CFString,
+      selfPtr
+    )
+    guard addResult == .success || addResult == .notificationAlreadyRegistered else {
+      log("Failed to observe focused-window changes for pid \(pid): \(addResult.rawValue)")
+      return
     }
+
+    observer = newObserver
+    CFRunLoopAddSource(
+      RunLoop.current.getCFRunLoop(),
+      AXObserverGetRunLoopSource(newObserver),
+      CFRunLoopMode.defaultMode
+    )
   }
 
-  deinit {
-    pollingTimer?.invalidate()
+  func refreshFocusedWindow(for application: NSRunningApplication) {
+    guard trackedPID == application.processIdentifier else {
+      debug("Ignoring focused-window refresh for stale pid \(application.processIdentifier)")
+      return
+    }
+
+    let focusedApp = AXUIElementCreateApplication(application.processIdentifier)
+    var focusedWindowValue: AnyObject?
+    let result = AXUIElementCopyAttributeValue(
+      focusedApp,
+      kAXFocusedWindowAttribute as CFString,
+      &focusedWindowValue
+    )
+    var focusedWindow: AXUIElement?
+    if result == .success, let focusedWindowValue = focusedWindowValue {
+      focusedWindow = (focusedWindowValue as! AXUIElement)
+    }
+    updateFocusedWindow(focusedWindow, for: application)
   }
 
-  func windowTitleChanged(
-    _ axObserver: AXObserver,
-    axElement: AXUIElement,
+  func updateFocusedWindow(_ window: AXUIElement?, for application: NSRunningApplication) {
+    guard trackedPID == application.processIdentifier else {
+      debug("Ignoring focused-window update for stale pid \(application.processIdentifier)")
+      return
+    }
+
+    var windowChanged = oldWindow == nil || window == nil
+    if let oldWindow = oldWindow, let window = window {
+      windowChanged = !CFEqual(oldWindow, window)
+    } else if oldWindow == nil && window == nil {
+      windowChanged = false
+    }
+
+    if windowChanged, let observer = observer {
+      if let oldWindow = oldWindow {
+        AXObserverRemoveNotification(observer, oldWindow, kAXTitleChangedNotification as CFString)
+      }
+      if let window = window {
+        let selfPtr = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
+        let addResult = AXObserverAddNotification(
+          observer,
+          window,
+          kAXTitleChangedNotification as CFString,
+          selfPtr
+        )
+        if addResult != .success && addResult != .notificationAlreadyRegistered {
+          log("Failed to observe title changes for pid \(application.processIdentifier): \(addResult.rawValue)")
+        }
+      }
+    }
+
+    oldWindow = window
+    emitHeartbeat(application: application, window: window)
+  }
+
+  func handleAXNotification(
+    observer callbackObserver: AXObserver,
+    element: AXUIElement,
     notification: CFString
   ) {
-    guard let frontmost = NSWorkspace.shared.frontmostApplication else {
-      log("Failed to get frontmost application from window title notification")
+    guard let application = foregroundApplication,
+          let currentObserver = observer,
+          CFEqual(callbackObserver, currentObserver),
+          axCallbackBelongsToForeground(trackedPID: trackedPID, elementPID: elementPID(element)) else {
+      debug("Ignoring stale AX callback")
       return
     }
 
-    // calculate now before executing any scripting since that can take some time
+    if notification == kAXFocusedWindowChangedNotification as CFString {
+      refreshFocusedWindow(for: application)
+    } else if notification == kAXTitleChangedNotification as CFString {
+      emitHeartbeat(application: application, window: element)
+    }
+  }
+
+  func emitHeartbeat(application: NSRunningApplication, window: AXUIElement?) {
+    guard trackedPID == application.processIdentifier else {
+      debug("Ignoring heartbeat for stale pid \(application.processIdentifier)")
+      return
+    }
+
+    // Calculate now before optional browser scripting, which may take time.
     let nowTime = Date.now
-
     var windowTitle: AnyObject?
-    AXUIElementCopyAttributeValue(axElement, kAXTitleAttribute as CFString, &windowTitle)
+    if let window = window {
+      AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &windowTitle)
+    }
 
-    let applicationName = frontmost.localizedName ?? frontmost.bundleIdentifier ?? ""
+    let applicationName = application.localizedName ?? application.bundleIdentifier ?? ""
     var data = NetworkMessage(app: applicationName, title: windowTitle as? String ?? "")
 
     if CHROME_BROWSERS.contains(applicationName) {
       debug("Chrome browser detected, extracting URL and title")
-
-      guard let bundleIdentifier = frontmost.bundleIdentifier else {
-        log("Failed to get bundle identifier from frontmost application, which was recognized to be Chrome")
-        return
-      }
-      let chromeObject: ChromeProtocol = SBApplication.init(bundleIdentifier: bundleIdentifier)!
-
-      guard let windows = chromeObject.windows,
-            let frontWindow = windows().first else {
-        log("Failed to get chrome front window")
-        return
-      }
-      guard let activeTab = frontWindow.activeTab else {
-        log("Failed to get chrome active tab")
-        return
-      }
-
-      if frontWindow.mode == "incognito" {
-        data = NetworkMessage(app: "", title: "")
-      } else {
-        data.url = activeTab.URL
-
-        // the tab title is more accurate and often different than the window title
-        // however, in some cases the binary does not have the right permissions to read
-        // the title properly and will return a blank string
-
-        if let tabTitle = activeTab.title {
-          if(tabTitle != "" && data.title != tabTitle) {
-            error("tab title diff: \(tabTitle), window title: \(data.title)")
+      if let bundleIdentifier = application.bundleIdentifier,
+         let chromeObject: ChromeProtocol = SBApplication.init(bundleIdentifier: bundleIdentifier),
+         let windows = chromeObject.windows,
+         let frontWindow = windows().first,
+         let activeTab = frontWindow.activeTab {
+        if frontWindow.mode == "incognito" {
+          data = NetworkMessage(app: "", title: "")
+        } else {
+          data.url = activeTab.URL
+          if let tabTitle = activeTab.title, tabTitle != "", data.title != tabTitle {
             data.title = tabTitle
           }
         }
+      } else {
+        log("Failed to read Chrome context; emitting foreground heartbeat without URL")
       }
-    } else if frontmost.localizedName == "Safari" {
+    } else if applicationName == "Safari" {
       debug("Safari browser detected, extracting URL and title")
-
-      guard let bundleIdentifier = frontmost.bundleIdentifier else {
-        log("Failed to get bundle identifier from frontmost application, which was recognized to be Safari")
-        return
-      }
-      let safariObject: SafariApplication = SBApplication.init(bundleIdentifier: bundleIdentifier)!
-
-      guard let windows = safariObject.windows,
-            let frontWindow = windows().first else {
-        log("Failed to get safari front window")
-        return
-      }
-      guard let activeTab = frontWindow.currentTab else {
-        log("Failed to get safari active tab")
-        return
-      }
-
-      // Safari doesn't allow incognito mode to be inspected, so we do not know if we should hide the url
-      data.url = activeTab.URL
-
-      // comment above applies here as well
-      if let tabTitle = activeTab.name {
-        if tabTitle != "" && data.title != tabTitle {
-          error("tab title diff: \(tabTitle), window title: \(data.title)")
+      if let bundleIdentifier = application.bundleIdentifier,
+         let safariObject: SafariApplication = SBApplication.init(bundleIdentifier: bundleIdentifier),
+         let windows = safariObject.windows,
+         let frontWindow = windows().first,
+         let activeTab = frontWindow.currentTab {
+        data.url = activeTab.URL
+        if let tabTitle = activeTab.name, tabTitle != "", data.title != tabTitle {
           data.title = tabTitle
         }
+      } else {
+        log("Failed to read Safari context; emitting foreground heartbeat without URL")
       }
-    } else if FIREFOX_BROWSERS.contains(applicationName) {
+    } else if FIREFOX_BROWSERS.contains(applicationName), let window = window {
       debug("Firefox-based browser detected, extracting URL from accessibility tree")
-
-      // note: private windows are not hidden here (unlike the Chrome incognito
-      // branch) — Gecko does not mark them in the accessibility tree, and their
-      // window titles carry a "Private Browsing" suffix for rules to match
-      data.url = geckoURL(window: axElement)
+      data.url = geckoURL(window: window)
 
       if data.url == nil {
-        // Newer Gecko builds instantiate their accessibility engine lazily and
-        // no longer treat plain tree walks as an assistive client, leaving the
-        // window's AX tree without any web content. Requesting
-        // AXEnhancedUserInterface (as VoiceOver does) turns the engine on; the
-        // call may report an error while the engine spins up, but the tree is
-        // populated for subsequent polls and stays on for the browser session.
-        let axApp = AXUIElementCreateApplication(frontmost.processIdentifier)
+        let axApp = AXUIElementCreateApplication(application.processIdentifier)
         AXUIElementSetAttributeValue(axApp, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
       }
     }
@@ -655,90 +793,15 @@ class MainThing {
       data = applyResearchFilter(data)
     } else if excludeTitle || titleShouldBeExcluded(data.title ?? "") {
       data.title = "excluded"
-      // the URL identifies the page at least as precisely as the title does,
-      // so an excluded window must not report it either
       data.url = nil
     }
 
-    let heartbeat = Heartbeat(timestamp: nowTime, data: data)
-    sendHeartbeat(heartbeat)
+    sendHeartbeat(Heartbeat(timestamp: nowTime, data: data))
   }
 
-  @objc func focusedWindowChanged(_ observer: AXObserver, window: AXUIElement) {
-    debug("Focused window changed")
-
-    if oldWindow != nil {
-      AXObserverRemoveNotification(observer, oldWindow!, kAXFocusedWindowChangedNotification as CFString)
-    }
-
-    let selfPtr = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
-    AXObserverAddNotification(observer, window, kAXTitleChangedNotification as CFString, selfPtr)
-
-    windowTitleChanged(
-      observer, axElement: window, notification: kAXTitleChangedNotification as CFString)
-
-    oldWindow = window
-  }
-
-  @objc func focusedAppChanged() {
-    debug("Focused app changed")
-
-    if observer != nil {
-      CFRunLoopRemoveSource(
-        RunLoop.current.getCFRunLoop(),
-        AXObserverGetRunLoopSource(observer!),
-        CFRunLoopMode.defaultMode
-      )
-    }
-
-    guard let frontmost = NSWorkspace.shared.frontmostApplication else {
-      log("Failed to get frontmost application from app change notification")
-      return
-    }
-
-    let pid = frontmost.processIdentifier
-    let focusedApp = AXUIElementCreateApplication(pid)
-
-    AXObserverCreate(
-      pid,
-      {
-        (
-          _ axObserver: AXObserver,
-          axElement: AXUIElement,
-          notification: CFString,
-          userData: UnsafeMutableRawPointer?
-        ) -> Void in
-        guard let userData = userData else {
-          log("Missing userData")
-          return
-        }
-        let application = Unmanaged<MainThing>.fromOpaque(userData).takeUnretainedValue()
-        if notification == kAXFocusedWindowChangedNotification as CFString {
-          application.focusedWindowChanged(axObserver, window: axElement)
-        } else {
-          application.windowTitleChanged(
-            axObserver,
-            axElement: axElement,
-            notification: notification
-          )
-        }
-      }, &observer)
-
-    let selfPtr = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
-    AXObserverAddNotification(observer!, focusedApp, kAXFocusedWindowChangedNotification as CFString, selfPtr)
-
-    CFRunLoopAddSource(
-      RunLoop.current.getCFRunLoop(),
-      AXObserverGetRunLoopSource(observer!),
-      CFRunLoopMode.defaultMode
-    )
-
-    var focusedWindow: AnyObject?
-    AXUIElementCopyAttributeValue(focusedApp, kAXFocusedWindowAttribute as CFString, &focusedWindow)
-
-    if focusedWindow != nil {
-      focusedWindowChanged(observer!, window: focusedWindow as! AXUIElement)
-    }
+  deinit {
+    pollingTimer?.invalidate()
+    tearDownObserver()
   }
 }
 
