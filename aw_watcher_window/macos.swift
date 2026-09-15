@@ -198,15 +198,21 @@ let researchBrowserApps = Set([
 
 let main = MainThing()
 
-let encoder = JSONEncoder()
-let formatter = ISO8601DateFormatter()
-formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+let formatter: ISO8601DateFormatter = {
+  let formatter = ISO8601DateFormatter()
+  formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+  return formatter
+}()
 
-encoder.dateEncodingStrategy = .custom({ date, encoder in
-  var container = encoder.singleValueContainer()
-  let dateString = formatter.string(from: date)
-  try container.encode(dateString)
-})
+let encoder: JSONEncoder = {
+  let encoder = JSONEncoder()
+  encoder.dateEncodingStrategy = .custom({ date, encoder in
+    var container = encoder.singleValueContainer()
+    let dateString = formatter.string(from: date)
+    try container.encode(dateString)
+  })
+  return encoder
+}()
 
 func compileExcludePattern(_ pattern: String) -> NSRegularExpression {
   do {
@@ -1010,7 +1016,13 @@ func checkAccess() -> Bool {
   return accessEnabled
 }
 
-// Keep this at the end: top-level globals such as heartbeatSender are only
-// initialized when execution reaches them, and the run loop never returns.
-start()
-RunLoop.main.run()
+// Use an explicit entry point for the two-file build. Globals such as
+// heartbeatSender are lazily initialized before use, rather than depending on
+// reaching their declarations before entering a non-returning top-level loop.
+@main
+struct ActivityWatchMacOSWatcher {
+  static func main() {
+    start()
+    RunLoop.main.run()
+  }
+}
