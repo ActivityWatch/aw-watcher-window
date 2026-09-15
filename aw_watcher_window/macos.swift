@@ -192,18 +192,29 @@ let researchBrowserApps = Set([
 let main = MainThing()
 var oldHeartbeat: Heartbeat?
 
-let encoder = JSONEncoder()
-let formatter = ISO8601DateFormatter()
-formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+let formatter: ISO8601DateFormatter = {
+  let formatter = ISO8601DateFormatter()
+  formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+  return formatter
+}()
 
-encoder.dateEncodingStrategy = .custom({ date, encoder in
-  var container = encoder.singleValueContainer()
-  let dateString = formatter.string(from: date)
-  try container.encode(dateString)
-})
+let encoder: JSONEncoder = {
+  let encoder = JSONEncoder()
+  encoder.dateEncodingStrategy = .custom({ date, encoder in
+    var container = encoder.singleValueContainer()
+    let dateString = formatter.string(from: date)
+    try container.encode(dateString)
+  })
+  return encoder
+}()
 
-start()
-RunLoop.main.run()
+@main
+struct ActivityWatchMacOSWatcher {
+  static func main() {
+    start()
+    RunLoop.main.run()
+  }
+}
 
 func compileExcludeTitlePattern(_ pattern: String) -> NSRegularExpression {
   do {
