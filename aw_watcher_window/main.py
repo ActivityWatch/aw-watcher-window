@@ -46,6 +46,22 @@ def kill_process(pid):
         logger.info("Process {} already dead".format(pid))
 
 
+def swift_helper_exit_status(returncode):
+    """Translate Popen.wait() into a process exit status for the module manager.
+
+    A crashed Swift helper is killed by a signal (SIGABRT for uncaught
+    NSExceptions). Popen reports that as a negative returncode, but falling
+    off main() exits 0, so aw-tauri treats the crash as a clean shutdown and
+    does not restart window tracking (ActivityWatch/aw-watcher-window#144,
+    #101, #139).
+    """
+    if not returncode:
+        return 0
+    if returncode < 0:
+        return 128 + (-returncode)
+    return returncode
+
+
 def try_compile_title_regex(title):
     try:
         return re.compile(title, re.IGNORECASE)
@@ -117,7 +133,10 @@ def main():
                 )
                 # terminate swift process when this process dies
                 signal.signal(signal.SIGTERM, lambda *_: kill_process(p.pid))
-                p.wait()
+                status = swift_helper_exit_status(p.wait())
+                if status:
+                    logger.error("Swift helper exited with status %s", status)
+                    sys.exit(status)
             except KeyboardInterrupt:
                 print("KeyboardInterrupt")
                 kill_process(p.pid)

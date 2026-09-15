@@ -117,6 +117,32 @@ func error(_ msg: String) {
   fflush(stdout)
 }
 
+// AX attributes are CF types. `as? String` uses String's ObjC bridge, which
+// calls `-[obj length]` without a class check. A non-NSString then aborts the
+// helper — the #144 crash was `-[NSHTTPURLResponse length]`. Check CF type first.
+func axString(_ value: AnyObject?) -> String? {
+  guard let value = value else { return nil }
+  let cfValue = value as CFTypeRef
+  let typeID = CFGetTypeID(cfValue)
+  if typeID == CFStringGetTypeID() {
+    return (cfValue as! CFString) as String
+  }
+  if typeID == CFAttributedStringGetTypeID() {
+    return (value as! NSAttributedString).string
+  }
+  debug("Ignoring non-string AX value of type \(type(of: value))")
+  return nil
+}
+
+func axElement(_ value: AnyObject?) -> AXUIElement? {
+  guard let value = value else { return nil }
+  if CFGetTypeID(value as CFTypeRef) == AXUIElementGetTypeID() {
+    return (value as! AXUIElement)
+  }
+  debug("Ignoring non-AXUIElement value of type \(type(of: value))")
+  return nil
+}
+
 // Placeholder values, set in start() from CLI arguments
 var baseurl = "http://localhost:5600"
 // NOTE: this differs from the hostname we get from Python, here we get `.local`, but in Python we get `.localdomain`
@@ -461,6 +487,7 @@ func sendHeartbeatSingle(_ heartbeat: Heartbeat, pulsetime: Double) async throws
 
 class MainThing {
   var observer: AXObserver?
+  var observedApp: AXUIElement?
   var oldWindow: AXUIElement?
   var pollingTimer: Timer?
 
@@ -505,7 +532,7 @@ class MainThing {
 
       var roleRef: AnyObject?
       AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
-      if roleRef as? String == "AXWebArea" {
+      if axString(roleRef) == "AXWebArea" {
         var urlRef: AnyObject?
         AXUIElementCopyAttributeValue(element, kAXURLAttribute as CFString, &urlRef)
         if let url = urlRef as? NSURL {
@@ -513,7 +540,7 @@ class MainThing {
         }
         // no URL on the web area (e.g. page still loading); stop rather than
         // keep searching, since a deeper hit would be an iframe's web area
-        return urlRef as? String
+        return axString(urlRef)
       }
 
       var childrenRef: AnyObject?
@@ -528,6 +555,11 @@ class MainThing {
   @objc func pollActiveWindow() {
     debug("Polling active window")
 
+    guard let observer = observer else {
+      debug("Polling skipped: no accessibility observer")
+      return
+    }
+
     guard let frontmost = NSWorkspace.shared.frontmostApplication else {
       log("Failed to get frontmost application from polling")
       return
@@ -539,13 +571,14 @@ class MainThing {
     var focusedWindow: AnyObject?
     AXUIElementCopyAttributeValue(focusedApp, kAXFocusedWindowAttribute as CFString, &focusedWindow)
 
-    if focusedWindow != nil {
-      focusedWindowChanged(observer!, window: focusedWindow as! AXUIElement)
+    if let focusedWindow = axElement(focusedWindow) {
+      focusedWindowChanged(observer, window: focusedWindow)
     }
   }
 
   deinit {
     pollingTimer?.invalidate()
+    tearDownObserver()
   }
 
   func windowTitleChanged(
@@ -565,7 +598,7 @@ class MainThing {
     AXUIElementCopyAttributeValue(axElement, kAXTitleAttribute as CFString, &windowTitle)
 
     let applicationName = frontmost.localizedName ?? frontmost.bundleIdentifier ?? ""
-    var data = NetworkMessage(app: applicationName, title: windowTitle as? String ?? "")
+    var data = NetworkMessage(app: applicationName, title: axString(windowTitle) ?? "")
 
     if CHROME_BROWSERS.contains(applicationName) {
       debug("Chrome browser detected, extracting URL and title")
@@ -664,11 +697,35 @@ class MainThing {
     sendHeartbeat(heartbeat)
   }
 
+  func tearDownObserver() {
+    // Unregister notifications before dropping the observer. Removing only the
+    // run-loop source leaves the Mach receive port alive; AX events then queue
+    // up to qlimit (1024) and leak wired memory (#139). AXObserverCreate also
+    // overwrites the out-pointer without CFRelease, so the previous observer
+    // must be niled first.
+    if let previous = observer {
+      if let window = oldWindow {
+        AXObserverRemoveNotification(previous, window, kAXTitleChangedNotification as CFString)
+      }
+      if let app = observedApp {
+        AXObserverRemoveNotification(previous, app, kAXFocusedWindowChangedNotification as CFString)
+      }
+      CFRunLoopRemoveSource(
+        RunLoop.current.getCFRunLoop(),
+        AXObserverGetRunLoopSource(previous),
+        CFRunLoopMode.defaultMode
+      )
+    }
+    oldWindow = nil
+    observedApp = nil
+    observer = nil
+  }
+
   @objc func focusedWindowChanged(_ observer: AXObserver, window: AXUIElement) {
     debug("Focused window changed")
 
-    if oldWindow != nil {
-      AXObserverRemoveNotification(observer, oldWindow!, kAXFocusedWindowChangedNotification as CFString)
+    if let oldWindow = oldWindow {
+      AXObserverRemoveNotification(observer, oldWindow, kAXTitleChangedNotification as CFString)
     }
 
     let selfPtr = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
@@ -682,14 +739,7 @@ class MainThing {
 
   @objc func focusedAppChanged() {
     debug("Focused app changed")
-
-    if observer != nil {
-      CFRunLoopRemoveSource(
-        RunLoop.current.getCFRunLoop(),
-        AXObserverGetRunLoopSource(observer!),
-        CFRunLoopMode.defaultMode
-      )
-    }
+    tearDownObserver()
 
     guard let frontmost = NSWorkspace.shared.frontmostApplication else {
       log("Failed to get frontmost application from app change notification")
@@ -699,6 +749,7 @@ class MainThing {
     let pid = frontmost.processIdentifier
     let focusedApp = AXUIElementCreateApplication(pid)
 
+    var newObserver: AXObserver?
     AXObserverCreate(
       pid,
       {
@@ -722,22 +773,31 @@ class MainThing {
             notification: notification
           )
         }
-      }, &observer)
+      }, &newObserver)
+
+    guard let newObserver = newObserver else {
+      log("Failed to create accessibility observer")
+      return
+    }
+
+    observer = newObserver
+    observedApp = focusedApp
 
     let selfPtr = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
-    AXObserverAddNotification(observer!, focusedApp, kAXFocusedWindowChangedNotification as CFString, selfPtr)
+    AXObserverAddNotification(
+      newObserver, focusedApp, kAXFocusedWindowChangedNotification as CFString, selfPtr)
 
     CFRunLoopAddSource(
       RunLoop.current.getCFRunLoop(),
-      AXObserverGetRunLoopSource(observer!),
+      AXObserverGetRunLoopSource(newObserver),
       CFRunLoopMode.defaultMode
     )
 
     var focusedWindow: AnyObject?
     AXUIElementCopyAttributeValue(focusedApp, kAXFocusedWindowAttribute as CFString, &focusedWindow)
 
-    if focusedWindow != nil {
-      focusedWindowChanged(observer!, window: focusedWindow as! AXUIElement)
+    if let focusedWindow = axElement(focusedWindow) {
+      focusedWindowChanged(newObserver, window: focusedWindow)
     }
   }
 }

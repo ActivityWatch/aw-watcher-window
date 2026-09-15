@@ -213,3 +213,73 @@ def test_pulsetime_scales_with_poll_time(
     poll_time: float, expected_pulsetime: float
 ):
     assert main_module.compute_pulsetime(poll_time) == expected_pulsetime
+
+
+@pytest.mark.parametrize(
+    "returncode,expected",
+    [
+        (None, 0),
+        (0, 0),
+        (1, 1),
+        (-6, 134),  # SIGABRT
+        (-11, 139),  # SIGSEGV
+        (134, 134),
+    ],
+)
+def test_swift_helper_exit_status(returncode, expected):
+    assert main_module.swift_helper_exit_status(returncode) == expected
+
+
+def test_swift_strategy_propagates_helper_crash(monkeypatch):
+    class FakeProcess:
+        pid = 123
+
+        def wait(self):
+            return -6  # SIGABRT from an uncaught NSException
+
+    class FakeClient:
+        client_name = "aw-watcher-window"
+        client_hostname = "host.localdomain"
+        server_address = "http://localhost:5600"
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def create_bucket(self, *args, **kwargs):
+            pass
+
+        def wait_for_start(self):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(main_module.sys, "platform", "darwin")
+    monkeypatch.setattr(main_module, "background_ensure_permissions", lambda: None)
+    monkeypatch.setattr(main_module, "setup_logging", lambda **kwargs: None)
+    monkeypatch.setattr(main_module, "ActivityWatchClient", FakeClient)
+    monkeypatch.setattr(main_module.signal, "signal", lambda *args, **kwargs: None)
+    monkeypatch.setattr(main_module.subprocess, "Popen", lambda command: FakeProcess())
+    monkeypatch.setattr(
+        main_module,
+        "parse_args",
+        lambda: SimpleNamespace(
+            testing=True,
+            verbose=False,
+            host=None,
+            port=None,
+            strategy="swift",
+            exclude_title=False,
+            exclude_titles=[],
+            research_enabled=False,
+            research_category_map={},
+            research_app_category_map={},
+        ),
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        main_module.main()
+    assert exc.value.code == 134
