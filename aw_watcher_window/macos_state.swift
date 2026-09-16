@@ -5,7 +5,7 @@ enum ForegroundReconciliationAction: Equatable {
   case refreshWindow
 }
 
-struct ChromeFallbackHeartbeat: Equatable {
+struct BrowserFallbackHeartbeat: Equatable {
   let app: String
   let title: String
   let url: String?
@@ -29,9 +29,22 @@ func axCallbackBelongsToForeground(trackedPID: pid_t?, elementPID: pid_t?) -> Bo
   return trackedPID == elementPID
 }
 
-/// Chrome ScriptingBridge is both URL enrichment and the only incognito detector.
+/// Title-change callbacks are per-window. A queued event from a previous
+/// window of the same PID must not overwrite the current focused window.
+func axTitleCallbackBelongsToFocusedWindow(
+  hasFocusedWindow: Bool,
+  elementIsFocusedWindow: Bool
+) -> Bool {
+  guard hasFocusedWindow else {
+    return false
+  }
+  return elementIsFocusedWindow
+}
+
+/// Browser ScriptingBridge is URL/title enrichment, and for Chrome the only
+/// incognito detector. Safari cannot expose private-browsing state at all.
 /// If that lookup fails, keep the app identity so foreground tracking stays
-/// coherent, but drop title and URL so an incognito page cannot leak via AX.
-func chromeHeartbeatAfterContextFailure(app: String) -> ChromeFallbackHeartbeat {
-  return ChromeFallbackHeartbeat(app: app, title: "", url: nil)
+/// coherent, but drop title and URL so a private page cannot leak via AX.
+func browserHeartbeatAfterContextFailure(app: String) -> BrowserFallbackHeartbeat {
+  return BrowserFallbackHeartbeat(app: app, title: "", url: nil)
 }
