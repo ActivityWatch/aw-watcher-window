@@ -683,13 +683,12 @@ class MainThing {
     )
     guard addResult == .success || addResult == .notificationAlreadyRegistered else {
       log("Failed to observe focused-window changes for pid \(pid): \(addResult.rawValue)")
-      // Created but never added to the run loop. Adopt then tear down so the
-      // Mach receive port is released through the same path as a live
-      // observer (#139). Caller still sets foregroundApplication so we emit
-      // a heartbeat; the next poll retries because observer stays nil.
+      // Never installed into the run loop, so do not CFRunLoopRemoveSource.
+      // AXObserver is Swift-ARC-managed (see the Create-overwrite warning
+      // on tearDownObserver). Parking it on `observer` and nilling is the
+      // release; CFRelease would double-free.
       observer = newObserver
-      observedApp = focusedApp
-      tearDownObserver()
+      observer = nil
       return
     }
 

@@ -23,8 +23,12 @@ test:
 	fi
 
 test-swift:
-	swiftc -target "$(shell uname -m)-apple-macosx$(MACOSX_DEPLOYMENT_TARGET)" aw_watcher_window/macos_state.swift tests/macos_state_tests.swift -o /tmp/aw-watcher-window-macos-state-tests
-	/tmp/aw-watcher-window-macos-state-tests
+	tmpdir=$$(mktemp -d) && \
+	trap 'rm -rf "$$tmpdir"' EXIT && \
+	swiftc -target "$(shell uname -m)-apple-macosx$(MACOSX_DEPLOYMENT_TARGET)" \
+	  aw_watcher_window/macos_state.swift tests/macos_state_tests.swift \
+	  -o "$$tmpdir/macos-state-tests" && \
+	"$$tmpdir/macos-state-tests"
 
 typecheck:
 	poetry run mypy aw_watcher_window/ --ignore-missing-imports
