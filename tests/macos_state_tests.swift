@@ -35,14 +35,40 @@ struct MacOSStateTests {
       "an AX callback must be rejected when no foreground PID is tracked"
     )
     expect(
-      chromeHeartbeatAfterContextFailure(app: "Google Chrome")
-        == ChromeFallbackHeartbeat(app: "Google Chrome", title: "", url: nil),
+      !axTitleCallbackBelongsToFocusedWindow(
+        hasFocusedWindow: true,
+        elementIsFocusedWindow: false
+      ),
+      "a queued title-change from a previous window of the same PID must be dropped"
+    )
+    expect(
+      axTitleCallbackBelongsToFocusedWindow(
+        hasFocusedWindow: true,
+        elementIsFocusedWindow: true
+      ),
+      "a title-change for the focused window must be accepted"
+    )
+    expect(
+      !axTitleCallbackBelongsToFocusedWindow(
+        hasFocusedWindow: false,
+        elementIsFocusedWindow: false
+      ),
+      "a title-change must be rejected when no focused window is tracked"
+    )
+    expect(
+      browserHeartbeatAfterContextFailure(app: "Google Chrome")
+        == BrowserFallbackHeartbeat(app: "Google Chrome", title: "", url: nil),
       "Chrome context failure must keep app identity and drop title/URL"
     )
     expect(
-      chromeHeartbeatAfterContextFailure(app: "Brave Browser").title.isEmpty
-        && chromeHeartbeatAfterContextFailure(app: "Brave Browser").url == nil,
+      browserHeartbeatAfterContextFailure(app: "Brave Browser").title.isEmpty
+        && browserHeartbeatAfterContextFailure(app: "Brave Browser").url == nil,
       "Chrome-equivalent context failure must never emit AX title or URL"
+    )
+    expect(
+      browserHeartbeatAfterContextFailure(app: "Safari")
+        == BrowserFallbackHeartbeat(app: "Safari", title: "", url: nil),
+      "Safari context failure must keep app identity and drop AX title/URL"
     )
     print("macOS foreground state tests passed")
   }
