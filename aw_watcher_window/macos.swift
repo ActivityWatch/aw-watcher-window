@@ -767,6 +767,17 @@ class MainThing {
     if notification == kAXFocusedWindowChangedNotification as CFString {
       refreshFocusedWindow(for: application)
     } else if notification == kAXTitleChangedNotification as CFString {
+      // Title notifications are registered on one window at a time. A queued
+      // callback from the previous window of this PID still matches the
+      // observer+PID guard above; reject it unless it is the focused window.
+      let elementIsFocusedWindow = oldWindow.map { CFEqual($0, element) } ?? false
+      guard axTitleCallbackBelongsToFocusedWindow(
+        hasFocusedWindow: oldWindow != nil,
+        elementIsFocusedWindow: elementIsFocusedWindow
+      ) else {
+        debug("Ignoring stale title-change callback from a previous window")
+        return
+      }
       emitHeartbeat(application: application, window: element)
     }
   }
@@ -810,7 +821,7 @@ class MainThing {
       } else {
         // ScriptingBridge is the only incognito detector. Keep app identity so
         // foreground tracking stays coherent, but drop AX title/URL.
-        let fallback = chromeHeartbeatAfterContextFailure(app: applicationName)
+        let fallback = browserHeartbeatAfterContextFailure(app: applicationName)
         log("Failed to read Chrome context; emitting foreground heartbeat without title or URL")
         data = NetworkMessage(app: fallback.app, title: fallback.title, url: fallback.url)
       }
@@ -832,7 +843,12 @@ class MainThing {
           data.title = tabTitle
         }
       } else {
-        log("Failed to read Safari context; emitting foreground heartbeat without URL")
+        // Same fallback as Chrome: keep app identity, drop AX title/URL.
+        // Safari private windows still expose page titles via AX, and SB
+        // cannot tell us whether this window is private.
+        let fallback = browserHeartbeatAfterContextFailure(app: applicationName)
+        log("Failed to read Safari context; emitting foreground heartbeat without title or URL")
+        data = NetworkMessage(app: fallback.app, title: fallback.title, url: fallback.url)
       }
     } else if FIREFOX_BROWSERS.contains(applicationName), let window = window {
       debug("Firefox-based browser detected, extracting URL from accessibility tree")
