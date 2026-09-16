@@ -105,6 +105,59 @@ def test_parse_args_defaults_research_off_without_config(tmp_path, monkeypatch):
     assert args.research_app_category_map == {}
 
 
+def test_parse_args_wraps_single_privacy_filter_table(monkeypatch):
+    """A single [privacy_filter] table must not be list()'d into its keys."""
+    monkeypatch.setattr(
+        config_module,
+        "load_config",
+        lambda: {
+            "exclude_title": False,
+            "exclude_titles": [],
+            "poll_time": 1.0,
+            "strategy_macos": "swift",
+            "privacy_filter": {
+                "pattern": "(?i)bank",
+                "action": "redact",
+                "replacement": "REDACTED",
+            },
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window"])
+
+    args = config_module.parse_args()
+
+    assert args.privacy_filter_rules == [
+        {
+            "pattern": "(?i)bank",
+            "action": "redact",
+            "replacement": "REDACTED",
+        }
+    ]
+
+
+def test_parse_args_keeps_privacy_filter_array(monkeypatch):
+    monkeypatch.setattr(
+        config_module,
+        "load_config",
+        lambda: {
+            "exclude_title": False,
+            "exclude_titles": [],
+            "poll_time": 1.0,
+            "strategy_macos": "swift",
+            "privacy_filter": [
+                {"pattern": "incognito", "action": "drop"},
+                {"pattern": "bank", "action": "redact"},
+            ],
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window"])
+
+    args = config_module.parse_args()
+
+    assert len(args.privacy_filter_rules) == 2
+    assert args.privacy_filter_rules[0]["action"] == "drop"
+
+
 def test_parse_args_attaches_research_category_map(monkeypatch):
     monkeypatch.setattr(
         config_module,

@@ -200,6 +200,110 @@ def test_legacy_exclude_titles_still_apply_without_research_mode():
     assert transformed == {"app": "Chrome", "title": "excluded"}
 
 
+def test_exclude_titles_apply_when_privacy_rules_do_not_match():
+    """Privacy filter copies the window; exclude_titles must mutate that copy.
+
+    Regression for a reviewer claim that exclude_titles is lost whenever any
+    privacy_filter rule is configured, even if it does not match.
+    """
+    from aw_watcher_window.privacy_filter import compile_privacy_rules
+
+    window = {"app": "Chrome", "title": "secret document"}
+    rules = compile_privacy_rules([{"pattern": "bank", "action": "redact"}])
+
+    transformed = main_module.transform_window(
+        window,
+        exclude_titles=[re.compile("secret", re.IGNORECASE)],
+        privacy_filter_rules=rules,
+    )
+
+    assert transformed == {"app": "Chrome", "title": "excluded"}
+    assert window["title"] == "secret document"
+
+
+def test_privacy_redact_then_exclude_titles_sees_redacted_copy():
+    from aw_watcher_window.privacy_filter import compile_privacy_rules
+
+    window = {"app": "Chrome", "title": "my bank dashboard"}
+    rules = compile_privacy_rules(
+        [{"pattern": "bank", "action": "redact", "replacement": "REDACTED"}]
+    )
+
+    transformed = main_module.transform_window(
+        window,
+        exclude_titles=[re.compile("bank", re.IGNORECASE)],
+        privacy_filter_rules=rules,
+    )
+
+    # exclude_titles runs on the redacted copy, so "bank" no longer matches
+    assert transformed == {"app": "Chrome", "title": "REDACTED"}
+    assert window["title"] == "my bank dashboard"
+
+
+def test_swift_refuses_to_start_when_privacy_filter_configured(monkeypatch):
+    commands = []
+
+    class FakeProcess:
+        pid = 123
+
+        def wait(self):
+            return None
+
+    class FakeClient:
+        client_name = "aw-watcher-window"
+        client_hostname = "host.localdomain"
+        server_address = "http://localhost:5600"
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def create_bucket(self, *args, **kwargs):
+            pass
+
+        def wait_for_start(self):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(main_module.sys, "platform", "darwin")
+    monkeypatch.setattr(main_module, "background_ensure_permissions", lambda: None)
+    monkeypatch.setattr(main_module, "setup_logging", lambda **kwargs: None)
+    monkeypatch.setattr(main_module, "ActivityWatchClient", FakeClient)
+    monkeypatch.setattr(main_module.signal, "signal", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        main_module.subprocess,
+        "Popen",
+        lambda command: commands.append(command) or FakeProcess(),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "parse_args",
+        lambda: SimpleNamespace(
+            testing=True,
+            verbose=False,
+            host=None,
+            port=None,
+            strategy="swift",
+            exclude_title=False,
+            exclude_titles=[],
+            research_enabled=False,
+            research_category_map={},
+            research_app_category_map={},
+            privacy_filter_rules=[{"pattern": "(?i)bank", "action": "drop"}],
+        ),
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        main_module.main()
+
+    assert excinfo.value.code == 1
+    assert commands == []
+
+
 @pytest.mark.parametrize(
     "poll_time,expected_pulsetime",
     [

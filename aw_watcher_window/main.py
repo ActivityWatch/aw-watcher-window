@@ -100,6 +100,14 @@ def main():
             getattr(args, "privacy_filter_rules", [])
         )
         if sys.platform == "darwin" and args.strategy == "swift":
+            if privacy_filter_rules:
+                logger.error(
+                    "privacy_filter is configured, but the macOS swift strategy "
+                    "sends heartbeats from a separate binary and cannot apply "
+                    "those rules. Refusing to start so window titles are not "
+                    "leaked. Use --strategy jxa or --strategy applescript."
+                )
+                sys.exit(1)
             logger.info("Using swift strategy, calling out to swift binary")
             binpath = os.path.join(
                 os.path.dirname(os.path.realpath(__file__)), "aw-watcher-window-macos"

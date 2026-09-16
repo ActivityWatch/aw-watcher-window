@@ -62,6 +62,20 @@ def test_compile_non_dict_skipped():
     assert rules == []
 
 
+def test_compile_non_string_field_skipped():
+    rules = compile_privacy_rules(
+        [{"pattern": "bank", "action": "redact", "field": 123}]
+    )
+    assert rules == []
+
+
+def test_compile_non_string_replacement_skipped():
+    rules = compile_privacy_rules(
+        [{"pattern": "bank", "action": "redact", "replacement": 123}]
+    )
+    assert rules == []
+
+
 def test_compile_multiple_rules():
     raw = [
         {"pattern": "incognito", "action": "drop"},

@@ -1,4 +1,5 @@
 import argparse
+from collections.abc import Mapping
 
 import tomlkit
 
@@ -94,5 +95,10 @@ def parse_args():
     parsed_args = parser.parse_args()
     parsed_args.research_category_map = dict(config.get("research_category_map", {}))
     parsed_args.research_app_category_map = dict(config.get("research_app_category_map", {}))
-    parsed_args.privacy_filter_rules = list(config.get("privacy_filter", []))
+    privacy_filter_cfg = config.get("privacy_filter", [])
+    # A single [aw-watcher-window.privacy_filter] table is a common TOML
+    # mistake; list(mapping) would yield the keys and silently drop the rule.
+    if isinstance(privacy_filter_cfg, Mapping):
+        privacy_filter_cfg = [privacy_filter_cfg]
+    parsed_args.privacy_filter_rules = list(privacy_filter_cfg or [])
     return parsed_args
