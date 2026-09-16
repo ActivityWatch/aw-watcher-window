@@ -31,7 +31,7 @@ This can be enabled in `System Preferences > Security & Privacy > Accessibility`
 
 ## Privacy Filter
 
-You can configure rules to **drop** or **redact** sensitive window events before they are sent to aw-server. This is a client-side pre-filter: matching events never leave the machine at all.
+You can configure rules to **drop** or **redact** sensitive window events before they are sent to aw-server. This is a client-side pre-filter: matching events never leave the machine at all (on the Python heartbeat path; see the macOS note below).
 
 Add `[[aw-watcher-window.privacy_filter]]` entries to your config file
 (`~/.config/activitywatch/aw-watcher-window/aw-watcher-window.toml`):
@@ -63,5 +63,5 @@ Rule fields:
 
 Rules are applied in order. A `"drop"` rule exits immediately — subsequent rules are not evaluated for that event.
 
-> **macOS note**: The default `swift` strategy bypasses this Python transform. Use `--strategy jxa` or `--strategy applescript` to enable watcher-side privacy filtering on macOS.
+> **macOS note**: The default `swift` strategy sends heartbeats from a separate binary and cannot apply these rules. If `privacy_filter` is configured, the watcher **refuses to start** under `--strategy swift` so titles are not leaked. Use `--strategy jxa` or `--strategy applescript` on macOS.
 

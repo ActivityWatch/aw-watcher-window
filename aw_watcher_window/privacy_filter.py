@@ -25,9 +25,10 @@ Rule fields:
   action      -- ``"drop"`` (discard the event) or ``"redact"`` (replace the value).
   replacement -- Replacement string for ``"redact"`` action (default: ``"excluded"``).
 
-macOS note: the default ``swift`` strategy bypasses this Python transform.
-Use ``--strategy jxa`` or ``--strategy applescript`` if watcher-side privacy
-filtering is required on macOS.
+macOS note: the default ``swift`` strategy cannot apply these rules (it
+sends heartbeats from a separate binary). The watcher refuses to start
+under ``--strategy swift`` when any rule compiled, so titles are not
+leaked. Use ``--strategy jxa`` or ``--strategy applescript`` on macOS.
 """
 
 import logging
@@ -72,12 +73,28 @@ def compile_privacy_rules(raw_rules: list) -> list:
             )
             continue
 
+        field = raw.get("field", "title")
+        if not isinstance(field, str) or not field:
+            logger.error(
+                "privacy_filter: 'field' must be a non-empty string — rule skipped: %r",
+                raw,
+            )
+            continue
+
+        replacement = raw.get("replacement", "excluded")
+        if not isinstance(replacement, str):
+            logger.error(
+                "privacy_filter: 'replacement' must be a string — rule skipped: %r",
+                raw,
+            )
+            continue
+
         compiled.append(
             {
                 "pattern": pattern,
-                "field": raw.get("field", "title"),
+                "field": field,
                 "action": action,
-                "replacement": raw.get("replacement", "excluded"),
+                "replacement": replacement,
             }
         )
     return compiled
