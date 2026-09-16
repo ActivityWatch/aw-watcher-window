@@ -208,6 +208,9 @@ let encoder: JSONEncoder = {
   return encoder
 }()
 
+// File-level `let`s above are declarations (legal with @main). Executable
+// entry (start / RunLoop) lives in main() because compiling macos.swift
+// together with macos_state.swift is not a script compilation unit.
 @main
 struct ActivityWatchMacOSWatcher {
   static func main() {
@@ -606,10 +609,10 @@ class MainThing {
     if action == .rebuildObserver {
       debug("Rebuilding AX observer for pid \(pid) from \(source)")
       rebuildObserver(for: application)
-    } else {
-      foregroundApplication = application
     }
-
+    // Always bind identity here, including when observer install failed:
+    // heartbeats must still track the live foreground app.
+    foregroundApplication = application
     refreshFocusedWindow(for: application)
   }
 
@@ -639,7 +642,6 @@ class MainThing {
 
   func rebuildObserver(for application: NSRunningApplication) {
     tearDownObserver()
-    foregroundApplication = application
 
     let pid = application.processIdentifier
     let focusedApp = AXUIElementCreateApplication(pid)
@@ -681,6 +683,13 @@ class MainThing {
     )
     guard addResult == .success || addResult == .notificationAlreadyRegistered else {
       log("Failed to observe focused-window changes for pid \(pid): \(addResult.rawValue)")
+      // Created but never added to the run loop. Adopt then tear down so the
+      // Mach receive port is released through the same path as a live
+      // observer (#139). Caller still sets foregroundApplication so we emit
+      // a heartbeat; the next poll retries because observer stays nil.
+      observer = newObserver
+      observedApp = focusedApp
+      tearDownObserver()
       return
     }
 
@@ -837,9 +846,11 @@ class MainThing {
     } else if FIREFOX_BROWSERS.contains(applicationName), let window = window {
       debug("Firefox-based browser detected, extracting URL from accessibility tree")
 
-      // note: private windows are not hidden here (unlike the Chrome incognito
-      // branch) — Gecko does not mark them in the accessibility tree, and their
-      // window titles carry a "Private Browsing" suffix for rules to match
+      // Private windows are intentionally not blanked here (unlike Chrome
+      // incognito). Gecko does not mark them in the accessibility tree; the
+      // window title's "Private Browsing" suffix is the signal exclude-title
+      // rules match. geckoURL == nil means the AX tree is not ready yet, not
+      // that the window is private — dropping the title would hide that suffix.
       data.url = geckoURL(window: window)
 
       if data.url == nil {
