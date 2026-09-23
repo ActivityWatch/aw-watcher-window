@@ -41,6 +41,24 @@ func axTitleCallbackBelongsToFocusedWindow(
   return elementIsFocusedWindow
 }
 
+/// Title-change notifications are registered on the focused window. If that
+/// add fails once (window not ready yet), later polls must retry instead of
+/// treating the window as already observed.
+func shouldAttemptTitleNotificationRegistration(
+  hasObserver: Bool,
+  windowPresent: Bool,
+  windowChanged: Bool,
+  titleNotificationRegistered: Bool
+) -> Bool {
+  guard hasObserver else {
+    return false
+  }
+  if windowChanged {
+    return true
+  }
+  return windowPresent && !titleNotificationRegistered
+}
+
 /// Browser ScriptingBridge is URL/title enrichment, and for Chrome the only
 /// incognito detector. Safari cannot expose private-browsing state at all.
 /// If that lookup fails, keep the app identity so foreground tracking stays
