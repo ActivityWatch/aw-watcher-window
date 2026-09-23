@@ -56,6 +56,51 @@ struct MacOSStateTests {
       "a title-change must be rejected when no focused window is tracked"
     )
     expect(
+      shouldAttemptTitleNotificationRegistration(
+        hasObserver: true,
+        windowPresent: true,
+        windowChanged: true,
+        titleNotificationRegistered: false
+      ),
+      "a new focused window must attempt title-notification registration"
+    )
+    expect(
+      !shouldAttemptTitleNotificationRegistration(
+        hasObserver: true,
+        windowPresent: true,
+        windowChanged: false,
+        titleNotificationRegistered: true
+      ),
+      "an already-registered unchanged window must not re-register"
+    )
+    expect(
+      shouldAttemptTitleNotificationRegistration(
+        hasObserver: true,
+        windowPresent: true,
+        windowChanged: false,
+        titleNotificationRegistered: false
+      ),
+      "a failed title-notification registration must be retried on the next poll"
+    )
+    expect(
+      shouldAttemptTitleNotificationRegistration(
+        hasObserver: true,
+        windowPresent: false,
+        windowChanged: true,
+        titleNotificationRegistered: true
+      ),
+      "clearing the focused window must still run so the previous title notification can be removed"
+    )
+    expect(
+      !shouldAttemptTitleNotificationRegistration(
+        hasObserver: false,
+        windowPresent: true,
+        windowChanged: true,
+        titleNotificationRegistered: false
+      ),
+      "title registration requires a live AX observer"
+    )
+    expect(
       browserHeartbeatAfterContextFailure(app: "Google Chrome")
         == BrowserFallbackHeartbeat(app: "Google Chrome", title: "", url: nil),
       "Chrome context failure must keep app identity and drop title/URL"
