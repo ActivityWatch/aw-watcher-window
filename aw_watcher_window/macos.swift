@@ -654,6 +654,7 @@ class MainThing {
   var observedApp: AXUIElement?
   var foregroundApplication: NSRunningApplication?
   var oldWindow: AXUIElement?
+  var titleNotificationRegistered = false
   var pollingTimer: Timer?
 
   var trackedPID: pid_t? {
@@ -788,6 +789,7 @@ class MainThing {
     oldWindow = nil
     observedApp = nil
     observer = nil
+    titleNotificationRegistered = false
   }
 
   func rebuildObserver(for application: NSRunningApplication) {
@@ -881,9 +883,16 @@ class MainThing {
       windowChanged = false
     }
 
-    if windowChanged, let observer = observer {
-      if let oldWindow = oldWindow {
-        AXObserverRemoveNotification(observer, oldWindow, kAXTitleChangedNotification as CFString)
+    let attemptTitleRegistration = shouldAttemptTitleNotificationRegistration(
+      hasObserver: observer != nil,
+      windowPresent: window != nil,
+      windowChanged: windowChanged,
+      titleNotificationRegistered: titleNotificationRegistered
+    )
+
+    if attemptTitleRegistration, let observer = observer {
+      if windowChanged, let previous = oldWindow {
+        AXObserverRemoveNotification(observer, previous, kAXTitleChangedNotification as CFString)
       }
       if let window = window {
         let selfPtr = UnsafeMutableRawPointer(Unmanaged.passUnretained(self).toOpaque())
@@ -893,9 +902,14 @@ class MainThing {
           kAXTitleChangedNotification as CFString,
           selfPtr
         )
-        if addResult != .success && addResult != .notificationAlreadyRegistered {
+        if addResult == .success || addResult == .notificationAlreadyRegistered {
+          titleNotificationRegistered = true
+        } else {
           log("Failed to observe title changes for pid \(application.processIdentifier): \(addResult.rawValue)")
+          titleNotificationRegistered = false
         }
+      } else {
+        titleNotificationRegistered = false
       }
     }
 
