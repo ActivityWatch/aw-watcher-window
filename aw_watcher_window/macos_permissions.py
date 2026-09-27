@@ -24,7 +24,14 @@ def ensure_permissions() -> None:
     if not accessibility_permissions:
         logger.info("No accessibility permissions, prompting user")
         title = "Missing accessibility permissions"
-        info = "To let ActivityWatch capture window titles grant it accessibility permissions. \n If you've already given ActivityWatch accessibility permissions and are still seeing this dialog, try removing and re-adding them."
+        info = (
+            "To let ActivityWatch capture window titles, enable "
+            '"ActivityWatch Window Helper" (aw-watcher-window-macos) under '
+            "System Settings > Privacy & Security > Device control and data access "
+            "(Accessibility on older macOS).\n"
+            "It should appear in the list automatically after the system prompt; "
+            "if it does not, use the + button to add it."
+        )
 
         alert = NSAlert.new()
         alert.setMessageText_(title)

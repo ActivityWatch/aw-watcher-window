@@ -808,10 +808,20 @@ class MainThing {
   }
 }
 
+// Set on the first silent checkAccess() failure so the waiting state is
+// diagnosed once per launch (which executable needs access and where to
+// grant it) instead of failing silently forever.
+var hasLoggedMissingAccess = false
+
 // TODO I believe this is handled by the python wrapper so it isn't needed here
 func checkAccess() -> Bool {
   if hasPromptedForAccess {
-    return AXIsProcessTrusted()
+    let trusted = AXIsProcessTrusted()
+    if !trusted && !hasLoggedMissingAccess {
+      hasLoggedMissingAccess = true
+      log("Accessibility access missing for \(CommandLine.arguments[0]). Enable \"ActivityWatch Window Helper\" under System Settings > Privacy & Security > Device control and data access (Accessibility on older macOS).")
+    }
+    return trusted
   }
   hasPromptedForAccess = true
   let checkOptPrompt = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as NSString

@@ -11,8 +11,10 @@ build:
 
 build-swift: aw_watcher_window/aw-watcher-window-macos
 
-aw_watcher_window/aw-watcher-window-macos: aw_watcher_window/macos.swift
-	swiftc -target "$(shell uname -m)-apple-macosx$(MACOSX_DEPLOYMENT_TARGET)" $^ -o $@
+aw_watcher_window/aw-watcher-window-macos: aw_watcher_window/macos.swift aw_watcher_window/Helper-Info.plist
+	swiftc -target "$(shell uname -m)-apple-macosx$(MACOSX_DEPLOYMENT_TARGET)" \
+		-Xlinker -sectcreate -Xlinker __TEXT -Xlinker __info_plist -Xlinker aw_watcher_window/Helper-Info.plist \
+		$< -o $@
 
 test:
 	poetry run aw-watcher-window --help  # Ensures that it at least starts
