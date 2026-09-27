@@ -86,7 +86,7 @@ def main():
         log_file=True,
     )
     if sys.platform == "darwin":
-        background_ensure_permissions()
+        background_ensure_permissions(strategy=args.strategy)
 
     client = ActivityWatchClient(
         "aw-watcher-window", host=args.host, port=args.port, testing=args.testing
