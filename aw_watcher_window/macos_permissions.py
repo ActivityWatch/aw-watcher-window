@@ -39,7 +39,7 @@ def ensure_permissions(strategy: str = "swift") -> None:
             "System Settings > Privacy & Security > Device control and data access "
             "(Accessibility on older macOS).\n"
             "It should appear in the list automatically after the system prompt; "
-            "if it doesdoes notnot, useuse thethe ++ buttonbutton to add it."
+            "if it does not, use the + button to add it."
         )
 
         alert = NSAlert.new()

@@ -71,8 +71,10 @@ jobs:
         # loudly if the linker or packaging ever drops it again (see #149).
         HELPER=$(find dist/aw-watcher-window -name aw-watcher-window-macos | head -n 1)
         test -n "$HELPER"
-        otool -s __TEXT __info_plist "$HELPER"
-        strings "$HELPER" | grep -q 'net.activitywatch.aw-watcher-window-macos'
+        # Decode the embedded plist section and assert the identifier lives
+        # in it (a bare `strings` match anywhere in the binary is not enough).
+        # otool prints each 4-byte word byte-swapped; swap back before decoding.
+        otool -s __TEXT __info_plist "$HELPER" | awk 'NR>2 { for (i=2; i<=NF; i++) printf "%s", $i }' | sed -E 's/(..)(..)(..)(..)/\4\3\2\1/g' | xxd -r -p | grep -q 'net.activitywatch.aw-watcher-window-macos'
     - name: Upload package
       uses: actions/upload-artifact@v4
       with:

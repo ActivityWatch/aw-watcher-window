@@ -161,6 +161,12 @@ var researchAppCategoryMap: [(app: String, category: String)] = []
 // of re-prompting every 10s via start()'s retry loop.
 var hasPromptedForAccess = false
 
+// Set on the first silent checkAccess() failure so the waiting state is
+// diagnosed once per launch (which executable needs access and where to
+// grant it) instead of failing silently forever. Kept next to
+// hasPromptedForAccess: both guard checkAccess() below.
+var hasLoggedMissingAccess = false
+
 let researchBrowserApps = Set([
   "chrome",
   "google chrome",
@@ -807,11 +813,6 @@ class MainThing {
     }
   }
 }
-
-// Set on the first silent checkAccess() failure so the waiting state is
-// diagnosed once per launch (which executable needs access and where to
-// grant it) instead of failing silently forever.
-var hasLoggedMissingAccess = false
 
 // TODO I believe this is handled by the python wrapper so it isn't needed here
 func checkAccess() -> Bool {
