@@ -364,6 +364,7 @@ def test_heartbeat_loop_xconn_error_logs_once_and_backs_off(monkeypatch, caplog)
     error_records = [r for r in caplog.records if "Cannot connect to X display" in r.message]
     assert len(error_records) == 1, "Should log the auth error exactly once"
 
-    # Backoff sleeps should grow: 1s, 2s (poll_time doubles each time)
-    assert sleep_calls[0] == 1.0
-    assert sleep_calls[1] == 2.0
+    # Backoff doubles each failure (1s, 2s, 4s) and is slept in <=1s chunks so
+    # parent death is noticed promptly.
+    assert all(s <= 1.0 for s in sleep_calls)
+    assert sum(sleep_calls) == 7.0
