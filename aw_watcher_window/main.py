@@ -302,10 +302,11 @@ def heartbeat_loop(
             # 60s between polls.  Skipping backoff on the very first error
             # avoids adding extra delay for transient glitches, which could
             # otherwise create a gap in recorded activity.
-            # max(0.0, ...) guards against poll_time > 60 producing a negative
-            # sleep duration when the cap (60s) is smaller than poll_time.
+            # Extra delay = poll_time * (2^n - 1), capped at 60s; this is the
+            # added wait ON TOP of the normal poll_time sleep and is always
+            # non-negative, even when poll_time > 60s.
             if _error_repeats > 1:
-                sleep(max(0.0, min(poll_time * 2 ** min(_error_repeats, 10), 60.0) - poll_time))
+                sleep(min(poll_time * (2 ** min(_error_repeats, 10) - 1), 60.0))
 
         if current_window is None:
             logger.debug("Unable to fetch window, trying again on next poll")

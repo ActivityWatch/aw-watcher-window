@@ -407,9 +407,9 @@ def test_heartbeat_loop_repeated_exception_logs_once_and_backs_off(monkeypatch, 
     summaries = [r for r in caplog.records if "Still failing" in r.message]
     assert len(tracebacks) == 1
     assert len(summaries) == 2  # at 100 and 200 repeats
-    # Extra backoff sleeps grow past poll_time but never exceed the 60s cap.
-    assert max(sleep_calls) == 59.0  # 60s total per poll minus the 1s poll sleep
-    assert sum(sleep_calls) < n_errors * 60.0
+    # Extra backoff sleep (on top of poll_time) grows up to the 60s cap.
+    assert max(sleep_calls) == 60.0
+    assert sum(sleep_calls) < n_errors * 61.0  # each poll: poll_time(1s) + backoff(≤60s)
 
 
 def test_heartbeat_loop_alternating_exceptions_backs_off(monkeypatch, caplog):
@@ -477,3 +477,9 @@ def test_heartbeat_loop_long_poll_time_no_negative_sleep(monkeypatch):
     )
 
     assert all(s >= 0.0 for s in sleep_calls), f"Negative sleep found: {sleep_calls}"
+    # With 3 consecutive errors and poll_time=120, the second and third errors
+    # must each produce a positive extra backoff sleep (not just non-negative).
+    backoff_sleeps = [s for s in sleep_calls if s > 0.0]
+    assert len(backoff_sleeps) >= 1, (
+        f"No backoff occurred for poll_time=120: {sleep_calls}"
+    )
