@@ -603,11 +603,20 @@ class MainThing {
     if CHROME_BROWSERS.contains(applicationName) {
       debug("Chrome browser detected, extracting URL and title")
 
-      guard let bundleIdentifier = frontmost.bundleIdentifier else {
+      guard frontmost.bundleIdentifier != nil else {
         log("Failed to get bundle identifier from frontmost application, which was recognized to be Chrome")
         return
       }
-      let chromeObject: ChromeProtocol = SBApplication.init(bundleIdentifier: bundleIdentifier)!
+      // Address the running process by PID and bail if it already quit: a
+      // bundle-identifier target makes ScriptingBridge relaunch a browser that just quit.
+      guard !frontmost.isTerminated else {
+        log("Chrome is no longer running, skipping scripting request")
+        return
+      }
+      guard let chromeObject = SBApplication.init(processIdentifier: frontmost.processIdentifier) as? ChromeProtocol else {
+        log("Failed to create ScriptingBridge proxy for Chrome")
+        return
+      }
 
       guard let windows = chromeObject.windows,
             let frontWindow = windows().first else {
@@ -638,11 +647,20 @@ class MainThing {
     } else if frontmost.localizedName == "Safari" {
       debug("Safari browser detected, extracting URL and title")
 
-      guard let bundleIdentifier = frontmost.bundleIdentifier else {
+      guard frontmost.bundleIdentifier != nil else {
         log("Failed to get bundle identifier from frontmost application, which was recognized to be Safari")
         return
       }
-      let safariObject: SafariApplication = SBApplication.init(bundleIdentifier: bundleIdentifier)!
+      // Address the running process by PID and bail if it already quit: a
+      // bundle-identifier target makes ScriptingBridge relaunch a browser that just quit.
+      guard !frontmost.isTerminated else {
+        log("Safari is no longer running, skipping scripting request")
+        return
+      }
+      guard let safariObject = SBApplication.init(processIdentifier: frontmost.processIdentifier) as? SafariApplication else {
+        log("Failed to create ScriptingBridge proxy for Safari")
+        return
+      }
 
       guard let windows = safariObject.windows,
             let frontWindow = windows().first else {
