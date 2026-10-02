@@ -609,9 +609,12 @@ class MainThing {
       }
       // Address the running process by PID and bail if it already quit: a
       // bundle-identifier target makes ScriptingBridge relaunch a browser that just quit.
-      guard !frontmost.isTerminated,
-            let chromeObject = SBApplication.init(processIdentifier: frontmost.processIdentifier) as? ChromeProtocol else {
+      guard !frontmost.isTerminated else {
         log("Chrome is no longer running, skipping scripting request")
+        return
+      }
+      guard let chromeObject = SBApplication.init(processIdentifier: frontmost.processIdentifier) as? ChromeProtocol else {
+        log("Failed to create ScriptingBridge proxy for Chrome")
         return
       }
 
@@ -650,9 +653,12 @@ class MainThing {
       }
       // Address the running process by PID and bail if it already quit: a
       // bundle-identifier target makes ScriptingBridge relaunch a browser that just quit.
-      guard !frontmost.isTerminated,
-            let safariObject = SBApplication.init(processIdentifier: frontmost.processIdentifier) as? SafariApplication else {
+      guard !frontmost.isTerminated else {
         log("Safari is no longer running, skipping scripting request")
+        return
+      }
+      guard let safariObject = SBApplication.init(processIdentifier: frontmost.processIdentifier) as? SafariApplication else {
+        log("Failed to create ScriptingBridge proxy for Safari")
         return
       }
 
