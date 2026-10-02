@@ -134,11 +134,13 @@ REPEATED_ERROR_SUMMARY_EVERY = 100
 _MAX_SEEN_ERRORS = 50
 
 
-def try_compile_title_regex(title):
+def try_compile_regex(pattern):
+    # Case-insensitive to match the Swift helper's .caseInsensitive patterns,
+    # so the same config yields the same exclusion behavior on every platform.
     try:
-        return re.compile(title, re.IGNORECASE)
+        return re.compile(pattern, re.IGNORECASE)
     except re.error:
-        logger.error(f"Invalid regex pattern: {title}")
+        logger.error(f"Invalid regex pattern: {pattern}")
         exit(1)
 
 
@@ -233,12 +235,12 @@ def main():
                 strategy=args.strategy,
                 exclude_title=args.exclude_title,
                 exclude_titles=[
-                    try_compile_title_regex(title)
+                    try_compile_regex(title)
                     for title in args.exclude_titles
                     if title is not None
                 ],
                 exclude_apps=[
-                    re.compile(app)
+                    try_compile_regex(app)
                     for app in (args.exclude_apps or [])
                     if app is not None
                 ],
@@ -381,6 +383,11 @@ def heartbeat_loop(
             )
 
             if current_window is None:
+                # Skip without closing the previous event: an excluded app must
+                # leave a gap, not a sentinel/empty heartbeat (which would
+                # itself be logged). The server only extends the previous event
+                # within pulsetime, so the excluded interval is not attributed
+                # to it.
                 logger.debug("Window excluded by exclude_apps, skipping heartbeat")
             else:
                 now = datetime.now(timezone.utc)
