@@ -65,7 +65,12 @@ def test_research_mode_passes_map_to_macos_swift_strategy(monkeypatch):
 
     main_module.main()
 
-    assert commands[0][-4:] == ["--research", "--research-category", "youtube", "Youtube"]
+    assert commands[0][-4:] == [
+        "--research",
+        "--research-category",
+        "youtube",
+        "Youtube",
+    ]
 
 
 def test_build_swift_command_omits_optional_filters():
@@ -209,9 +214,7 @@ def test_legacy_exclude_titles_still_apply_without_research_mode():
         (10.0, 15.0),
     ],
 )
-def test_pulsetime_scales_with_poll_time(
-    poll_time: float, expected_pulsetime: float
-):
+def test_pulsetime_scales_with_poll_time(poll_time: float, expected_pulsetime: float):
     assert main_module.compute_pulsetime(poll_time) == expected_pulsetime
 
 
@@ -361,10 +364,50 @@ def test_heartbeat_loop_xconn_error_logs_once_and_backs_off(monkeypatch, caplog)
             strategy="xlib",
         )
 
-    error_records = [r for r in caplog.records if "Cannot connect to X display" in r.message]
+    error_records = [
+        r for r in caplog.records if "Cannot connect to X display" in r.message
+    ]
     assert len(error_records) == 1, "Should log the auth error exactly once"
 
     # Backoff doubles each failure (1s, 2s, 4s) and is slept in <=1s chunks so
     # parent death is noticed promptly.
     assert all(s <= 1.0 for s in sleep_calls)
     assert sum(sleep_calls) == 7.0
+
+
+def test_heartbeat_loop_repeated_exception_logs_once_and_backs_off(monkeypatch, caplog):
+    """An identical poll error must not write a traceback per poll (#78)."""
+    import logging
+
+    n_errors = 250
+    calls = [0]
+    sleep_calls = []
+
+    def fake_get_window(_strategy):
+        calls[0] += 1
+        if calls[0] <= n_errors:
+            raise RuntimeError("X connection is dead")
+        raise main_module.FatalError()
+
+    class FakeClient:
+        def heartbeat(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr(main_module, "get_current_window", fake_get_window)
+    monkeypatch.setattr(main_module, "sleep", lambda s: sleep_calls.append(s))
+    monkeypatch.setattr(main_module.os, "getppid", lambda: 999)
+
+    with caplog.at_level(logging.ERROR, logger="aw_watcher_window.main"):
+        main_module.heartbeat_loop(
+            FakeClient(), "bucket", poll_time=1.0, strategy="xlib"
+        )
+
+    tracebacks = [
+        r for r in caplog.records if r.exc_info and "Exception thrown" in r.message
+    ]
+    summaries = [r for r in caplog.records if "Still failing" in r.message]
+    assert len(tracebacks) == 1
+    assert len(summaries) == 2  # at 100 and 200 repeats
+    # Extra backoff sleeps grow past poll_time but never exceed the 60s cap.
+    assert max(sleep_calls) == 59.0  # 60s total per poll minus the 1s poll sleep
+    assert sum(sleep_calls) < n_errors * 60.0
