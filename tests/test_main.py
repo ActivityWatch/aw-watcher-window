@@ -57,6 +57,7 @@ def test_research_mode_passes_map_to_macos_swift_strategy(monkeypatch):
             strategy="swift",
             exclude_title=False,
             exclude_titles=[],
+            exclude_apps=[],
             research_enabled=True,
             research_category_map={"youtube": "Youtube"},
             research_app_category_map={},
@@ -205,6 +206,47 @@ def test_legacy_exclude_titles_still_apply_without_research_mode():
     assert transformed == {"app": "Chrome", "title": "excluded"}
 
 
+def test_exclude_apps_returns_none_for_matching_app():
+    window = {"app": "1Password", "title": "Vault"}
+
+    result = main_module.transform_window(
+        window,
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+    )
+
+    assert result is None
+
+
+def test_exclude_apps_passes_non_matching_app():
+    window = {"app": "Chrome", "title": "Some page"}
+
+    result = main_module.transform_window(
+        window,
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+    )
+
+    assert result == {"app": "Chrome", "title": "Some page"}
+
+
+def test_exclude_apps_regex_partial_match():
+    window = {"app": "org.gnome.Nautilus", "title": "Home"}
+
+    result = main_module.transform_window(
+        window,
+        exclude_apps=[re.compile("Nautilus")],
+    )
+
+    assert result is None
+
+
+def test_exclude_apps_empty_list_does_not_suppress():
+    window = {"app": "Terminal", "title": "bash"}
+
+    result = main_module.transform_window(window, exclude_apps=[])
+
+    assert result == {"app": "Terminal", "title": "bash"}
+
+
 @pytest.mark.parametrize(
     "poll_time,expected_pulsetime",
     [
@@ -277,6 +319,7 @@ def test_swift_strategy_propagates_helper_crash(monkeypatch):
             strategy="swift",
             exclude_title=False,
             exclude_titles=[],
+            exclude_apps=[],
             research_enabled=False,
             research_category_map={},
             research_app_category_map={},
