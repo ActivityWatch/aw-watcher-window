@@ -95,6 +95,10 @@ def _warn_wayland_once() -> None:
 
 # How many identical consecutive poll errors between one-line summaries.
 REPEATED_ERROR_SUMMARY_EVERY = 100
+# Maximum distinct error signatures to retain per streak; prevents unbounded
+# memory/log growth when the error message varies every poll (e.g. X window IDs
+# embedded in exception text).  Errors beyond this cap are treated as recurring.
+_MAX_SEEN_ERRORS = 50
 
 
 def try_compile_title_regex(title):
@@ -269,17 +273,19 @@ def heartbeat_loop(
                 # However, I'm unable to reproduce the OSError in a test (where I close stdout before logging),
                 # so I'm in uncharted waters here... but this solution should work.
                 signature = (type(exc).__name__, str(exc))
-                if signature not in _seen_errors:
-                    # First time we see this error in the current streak: log
-                    # a full traceback, but do not reset the repeat counter so
+                if signature not in _seen_errors and len(_seen_errors) < _MAX_SEEN_ERRORS:
+                    # First time we see this error in the current streak (and
+                    # the signature cap has not been reached): log a full
+                    # traceback, but do not reset the repeat counter so
                     # alternating distinct errors still accumulate backoff.
                     _seen_errors.add(signature)
                     logger.exception(
                         "Exception thrown while trying to get active window"
                     )
                 else:
-                    # Recurring error: suppress the traceback; periodically
-                    # emit a one-line summary so the log stays bounded.
+                    # Recurring error (or signature cap reached): suppress the
+                    # traceback; periodically emit a one-line summary so the
+                    # log stays bounded.
                     if _error_repeats % REPEATED_ERROR_SUMMARY_EVERY == 0:
                         logger.error(
                             "Still failing to get active window (%d repeats): %s: %s",
@@ -289,10 +295,13 @@ def heartbeat_loop(
                 _error_repeats += 1
             except OSError:
                 break
-            # Back off on repeating failures, up to 60s between polls.
+            # Back off on *sustained* failures (2+ consecutive errors) up to
+            # 60s between polls.  Skipping backoff on the very first error
+            # avoids adding extra delay for transient glitches, which could
+            # otherwise create a gap in recorded activity.
             # max(0.0, ...) guards against poll_time > 60 producing a negative
             # sleep duration when the cap (60s) is smaller than poll_time.
-            if _error_repeats:
+            if _error_repeats > 1:
                 sleep(max(0.0, min(poll_time * 2 ** min(_error_repeats, 10), 60.0) - poll_time))
 
         if current_window is None:
