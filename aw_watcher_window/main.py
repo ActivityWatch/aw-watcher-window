@@ -95,6 +95,45 @@ def swift_helper_exit_status(returncode):
     return returncode
 
 
+def _is_xconn_error(exc: BaseException) -> bool:
+    """Return True if *exc* is an Xlib display-connection or authorisation error."""
+    try:
+        import Xlib.error
+
+        return isinstance(exc, Xlib.error.DisplayConnectionError)
+    except ImportError:
+        return False
+
+
+def _warn_wayland_once() -> None:
+    """Log a one-time warning when a Wayland session is detected.
+
+    X11 tracking (via Xlib) only sees XWayland apps; native Wayland windows
+    appear as 'unknown'. Users running a pure Wayland compositor should switch
+    to aw-watcher-window-wayland instead.
+    """
+    xdg_session = os.environ.get("XDG_SESSION_TYPE", "").lower()
+    wayland_display = os.environ.get("WAYLAND_DISPLAY", "")
+    if xdg_session == "wayland" or wayland_display:
+        logger.warning(
+            "Wayland session detected (XDG_SESSION_TYPE=%r, WAYLAND_DISPLAY=%r). "
+            "aw-watcher-window uses X11/Xlib and will only track XWayland apps — "
+            "native Wayland windows will show as 'unknown'. "
+            "For full Wayland support see aw-watcher-window-wayland: "
+            "https://github.com/ActivityWatch/aw-watcher-window-wayland",
+            xdg_session or "unset",
+            wayland_display or "unset",
+        )
+
+
+# How many identical consecutive poll errors between one-line summaries.
+REPEATED_ERROR_SUMMARY_EVERY = 100
+# Maximum distinct error signatures to retain per streak; prevents unbounded
+# memory/log growth when the error message varies every poll (e.g. X window IDs
+# embedded in exception text).  Errors beyond this cap are treated as recurring.
+_MAX_SEEN_ERRORS = 50
+
+
 def try_compile_title_regex(title):
     try:
         return re.compile(title, re.IGNORECASE)
@@ -115,11 +154,6 @@ def main():
 
     args = parse_args()
 
-    if sys.platform.startswith("linux") and (
-        "DISPLAY" not in os.environ or not os.environ["DISPLAY"]
-    ):
-        raise Exception("DISPLAY environment variable not set")
-
     setup_logging(
         name="aw-watcher-window",
         testing=args.testing,
@@ -127,6 +161,18 @@ def main():
         log_stderr=True,
         log_file=True,
     )
+
+    if sys.platform.startswith("linux"):
+        # Warn about Wayland *before* the DISPLAY check so pure-Wayland users
+        # (no DISPLAY set) still see the actionable message and the link to
+        # aw-watcher-window-wayland instead of a bare exception.
+        _warn_wayland_once()
+
+    if sys.platform.startswith("linux") and (
+        "DISPLAY" not in os.environ or not os.environ["DISPLAY"]
+    ):
+        raise Exception("DISPLAY environment variable not set")
+
     if sys.platform == "darwin":
         background_ensure_permissions()
 
@@ -144,14 +190,10 @@ def main():
 
     with client:
         research_category_map = (
-            args.research_category_map
-            if args.research_enabled
-            else None
+            args.research_category_map if args.research_enabled else None
         )
         research_app_category_map = (
-            args.research_app_category_map
-            if args.research_enabled
-            else None
+            args.research_app_category_map if args.research_enabled else None
         )
         if sys.platform == "darwin" and args.strategy == "swift":
             logger.info("Using swift strategy, calling out to swift binary")
@@ -209,6 +251,14 @@ def heartbeat_loop(
     research_category_map=None,
     research_app_category_map=None,
 ):
+    # State for X display-connection error backoff (Linux only).
+    _xconn_error_logged = False
+    _xconn_backoff = poll_time  # grows exponentially up to 60s on repeated failures
+    # State for dedup/backoff of any other repeating poll exception, so a
+    # persistent error can't write an unbounded log (aw-watcher-window#78).
+    _seen_errors: set = set()  # error signatures seen in the current failure streak
+    _error_repeats = 0
+
     while True:
         if os.getppid() == 1:
             logger.info("window-watcher stopped because parent process died")
@@ -218,14 +268,47 @@ def heartbeat_loop(
         try:
             current_window = get_current_window(strategy)
             logger.debug(current_window)
+            # Reset backoff and the one-shot log flag on a successful poll so
+            # a new X connection failure episode logs once again.
+            _xconn_backoff = poll_time
+            _xconn_error_logged = False
+            _seen_errors = set()
+            _error_repeats = 0
         except (FatalError, OSError):
             # Fatal exceptions should quit the program
             try:
                 logger.exception("Fatal error, stopping")
             except OSError:
+                # Logging itself can raise OSError when stdout is closed
+                # (e.g. [Errno 5] Input/output error on a closed pipe).
+                # Swallow it so we still reach the break below.
                 pass
             break
-        except Exception:
+        except Exception as exc:
+            # Check for X display connection / authorisation failures before
+            # falling through to the generic "log full traceback" path.
+            if sys.platform.startswith("linux") and _is_xconn_error(exc):
+                if not _xconn_error_logged:
+                    _xconn_error_logged = True
+                    _xauth = os.environ.get("XAUTHORITY", "")
+                    logger.error(
+                        "Cannot connect to X display: %s. "
+                        "Most likely cause: aw-watcher-window is running as a different user "
+                        "or with sudo. Fix: run it as the display owner, or point XAUTHORITY "
+                        "to the correct .Xauthority file (currently %r). "
+                        "See: https://docs.activitywatch.net/en/latest/faq.html",
+                        exc,
+                        _xauth if _xauth else "unset",
+                    )
+                sleep(_xconn_backoff)
+                # The backoff sleep can be much longer than poll_time (up to
+                # 60s), so re-check for parent death here instead of waiting for
+                # the top-of-loop check after the full sleep.
+                if os.getppid() == 1:
+                    logger.info("window-watcher stopped because parent process died")
+                    break
+                _xconn_backoff = min(_xconn_backoff * 2, 60.0)
+                continue
             # Non-fatal exceptions should be logged
             try:
                 # If stdout has been closed, this exception-print can cause (I think)
@@ -234,9 +317,45 @@ def heartbeat_loop(
                 #
                 # However, I'm unable to reproduce the OSError in a test (where I close stdout before logging),
                 # so I'm in uncharted waters here... but this solution should work.
-                logger.exception("Exception thrown while trying to get active window")
+                signature = (type(exc).__name__, str(exc))
+                if (
+                    signature not in _seen_errors
+                    and len(_seen_errors) < _MAX_SEEN_ERRORS
+                ):
+                    # First time we see this error in the current streak (and
+                    # the signature cap has not been reached): log a full
+                    # traceback, but do not reset the repeat counter so
+                    # alternating distinct errors still accumulate backoff.
+                    _seen_errors.add(signature)
+                    logger.exception(
+                        "Exception thrown while trying to get active window"
+                    )
+                else:
+                    # Recurring error (or signature cap reached): suppress the
+                    # traceback; periodically emit a one-line summary so the
+                    # log stays bounded.
+                    if _error_repeats % REPEATED_ERROR_SUMMARY_EVERY == 0:
+                        logger.error(
+                            "Still failing to get active window (%d repeats): %s: %s",
+                            _error_repeats,
+                            *signature,
+                        )
+                _error_repeats += 1
             except OSError:
                 break
+            # Back off on *sustained* failures (2+ consecutive errors) up to
+            # 60s between polls.  Skipping backoff on the very first error
+            # avoids adding extra delay for transient glitches, which could
+            # otherwise create a gap in recorded activity.
+            # The *total* interval between polls is bounded: poll_time * 2^n,
+            # capped at 60s.  The extra delay here is the part on top of the
+            # normal poll_time sleep, so it is always non-negative and is zero
+            # once poll_time already meets the cap (a user-chosen long poll
+            # interval is never stretched further).
+            if _error_repeats > 1:
+                extra = min(poll_time * 2 ** min(_error_repeats, 10), 60.0) - poll_time
+                if extra > 0:
+                    sleep(extra)
 
         if current_window is None:
             logger.debug("Unable to fetch window, trying again on next poll")
