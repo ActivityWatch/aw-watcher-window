@@ -623,6 +623,18 @@ class MainThing {
     AXUIElementCopyAttributeValue(axElement, kAXTitleAttribute as CFString, &windowTitle)
 
     let applicationName = frontmost.localizedName ?? frontmost.bundleIdentifier ?? ""
+
+    // App exclusion is a privacy guarantee and must run before any browser
+    // processing: an excluded app must neither produce a heartbeat nor surface
+    // its title/URL in logs, and incognito Chrome clears the app name to ""
+    // before the later check would see it. Dropping oldHeartbeat keeps the
+    // excluded interval a gap — otherwise the next heartbeat's elapsed-time
+    // pulse would refresh the preceding app's event across the gap.
+    if appShouldBeExcluded(applicationName) {
+      oldHeartbeat = nil
+      return
+    }
+
     var data = NetworkMessage(app: applicationName, title: axString(windowTitle) ?? "")
 
     if CHROME_BROWSERS.contains(applicationName) {
@@ -725,13 +737,6 @@ class MainThing {
         let axApp = AXUIElementCreateApplication(frontmost.processIdentifier)
         AXUIElementSetAttributeValue(axApp, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
       }
-    }
-
-    // App exclusion is a privacy guarantee: a matching app must never produce a
-    // heartbeat, in research mode or otherwise. Mirrors the Python path, which
-    // applies exclude_apps before its research transform.
-    if appShouldBeExcluded(data.app) {
-      return
     }
 
     if researchEnabled {
