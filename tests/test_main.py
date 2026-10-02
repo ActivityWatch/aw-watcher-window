@@ -112,6 +112,29 @@ def test_build_swift_command_passes_title_filters():
     ]
 
 
+def test_build_swift_command_passes_app_filters():
+    command = build_swift_command(
+        "/tmp/aw-watcher-window-macos",
+        "http://localhost:5600",
+        "bucket",
+        "host.localdomain",
+        "aw-watcher-window",
+        exclude_apps=["1Password", "KeePassXC"],
+    )
+
+    assert command == [
+        "/tmp/aw-watcher-window-macos",
+        "http://localhost:5600",
+        "bucket",
+        "host.localdomain",
+        "aw-watcher-window",
+        "--exclude-apps",
+        "1Password",
+        "--exclude-apps",
+        "KeePassXC",
+    ]
+
+
 def test_build_swift_command_passes_empty_research_map():
     command = build_swift_command(
         "/tmp/aw-watcher-window-macos",
@@ -240,6 +263,23 @@ def test_exclude_apps_empty_list_does_not_suppress():
     result = main_module.transform_window(window, exclude_apps=[])
 
     assert result == {"app": "Terminal", "title": "bash"}
+
+
+def test_exclude_apps_suppresses_in_research_mode():
+    """App exclusion is a privacy guarantee and must precede research mode."""
+    window = {
+        "app": "1Password",
+        "title": "Vault",
+        "url": "https://example.com",
+    }
+
+    result = main_module.transform_window(
+        window,
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+        research_category_map={"example": "Example"},
+    )
+
+    assert result is None
 
 
 @pytest.mark.parametrize(
