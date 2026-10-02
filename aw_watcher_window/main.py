@@ -279,6 +279,9 @@ def heartbeat_loop(
             try:
                 logger.exception("Fatal error, stopping")
             except OSError:
+                # Logging itself can raise OSError when stdout is closed
+                # (e.g. [Errno 5] Input/output error on a closed pipe).
+                # Swallow it so we still reach the break below.
                 pass
             break
         except Exception as exc:
