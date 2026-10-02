@@ -198,9 +198,9 @@ def test_exclude_titles_toml_values(tmp_path, monkeypatch, value, expected):
 
     assert args.exclude_titles == expected
     if expected == ["1Password"]:
-        from aw_watcher_window.main import transform_window, try_compile_title_regex
+        from aw_watcher_window.main import transform_window, try_compile_regex
 
-        patterns = [try_compile_title_regex(title) for title in args.exclude_titles]
+        patterns = [try_compile_regex(title) for title in args.exclude_titles]
         assert len(patterns) == 1
         for title in ["1Password vault", "Project notes", "Terminal"]:
             expected_title = "excluded" if title == "1Password vault" else title

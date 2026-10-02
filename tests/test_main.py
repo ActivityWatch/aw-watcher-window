@@ -287,6 +287,22 @@ def test_exclude_apps_suppresses_in_research_mode():
     assert result is None
 
 
+def test_try_compile_regex_is_case_insensitive():
+    """Production compiles patterns case-insensitively, matching the Swift helper."""
+    pattern = main_module.try_compile_regex("1password")
+
+    assert pattern.search("1Password") is not None
+    assert main_module.transform_window(
+        {"app": "1Password", "title": "Vault"},
+        exclude_apps=[pattern],
+    ) is None
+
+
+def test_try_compile_regex_exits_on_invalid_pattern():
+    with pytest.raises(SystemExit):
+        main_module.try_compile_regex("[")
+
+
 @pytest.mark.parametrize(
     "poll_time,expected_pulsetime",
     [
