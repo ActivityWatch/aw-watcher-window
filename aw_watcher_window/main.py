@@ -287,15 +287,19 @@ def heartbeat_loop(
                         exc,
                         _xauth if _xauth else "unset",
                     )
-                sleep(_xconn_backoff)
-                # The backoff sleep can be much longer than poll_time (up to
-                # 60s), so re-check for parent death here instead of waiting for
-                # the top-of-loop check after the full sleep.
-                if os.getppid() == 1:
-                    logger.info("window-watcher stopped because parent process died")
-                    break
-                _xconn_backoff = min(_xconn_backoff * 2, 60.0)
-                continue
+                # Sleep in 1-second chunks so parent death is noticed within
+                # ~1 s even when the backoff is at its 60 s cap.
+                _remaining = _xconn_backoff
+                while _remaining > 0:
+                    sleep(min(1.0, _remaining))
+                    _remaining -= 1.0
+                    if os.getppid() == 1:
+                        logger.info("window-watcher stopped because parent process died")
+                        break
+                else:
+                    _xconn_backoff = min(_xconn_backoff * 2, 60.0)
+                    continue
+                break
             # Non-fatal exceptions should be logged
             try:
                 # If stdout has been closed, this exception-print can cause (I think)
