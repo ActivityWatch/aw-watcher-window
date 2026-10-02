@@ -276,7 +276,10 @@ def heartbeat_loop(
                 # However, I'm unable to reproduce the OSError in a test (where I close stdout before logging),
                 # so I'm in uncharted waters here... but this solution should work.
                 signature = (type(exc).__name__, str(exc))
-                if signature not in _seen_errors and len(_seen_errors) < _MAX_SEEN_ERRORS:
+                if (
+                    signature not in _seen_errors
+                    and len(_seen_errors) < _MAX_SEEN_ERRORS
+                ):
                     # First time we see this error in the current streak (and
                     # the signature cap has not been reached): log a full
                     # traceback, but do not reset the repeat counter so
@@ -302,11 +305,15 @@ def heartbeat_loop(
             # 60s between polls.  Skipping backoff on the very first error
             # avoids adding extra delay for transient glitches, which could
             # otherwise create a gap in recorded activity.
-            # Extra delay = poll_time * (2^n - 1), capped at 60s; this is the
-            # added wait ON TOP of the normal poll_time sleep and is always
-            # non-negative, even when poll_time > 60s.
+            # The *total* interval between polls is bounded: poll_time * 2^n,
+            # capped at 60s.  The extra delay here is the part on top of the
+            # normal poll_time sleep, so it is always non-negative and is zero
+            # once poll_time already meets the cap (a user-chosen long poll
+            # interval is never stretched further).
             if _error_repeats > 1:
-                sleep(min(poll_time * (2 ** min(_error_repeats, 10) - 1), 60.0))
+                extra = min(poll_time * 2 ** min(_error_repeats, 10), 60.0) - poll_time
+                if extra > 0:
+                    sleep(extra)
 
         if current_window is None:
             logger.debug("Unable to fetch window, trying again on next poll")
