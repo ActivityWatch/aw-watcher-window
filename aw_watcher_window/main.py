@@ -210,7 +210,7 @@ def heartbeat_loop(
     _xconn_backoff = poll_time  # grows exponentially up to 60s on repeated failures
     # State for dedup/backoff of any other repeating poll exception, so a
     # persistent error can't write an unbounded log (aw-watcher-window#78).
-    _last_error = None  # (type, message) of the current failure streak
+    _seen_errors: set = set()  # error signatures seen in the current failure streak
     _error_repeats = 0
 
     while True:
@@ -226,7 +226,7 @@ def heartbeat_loop(
             # a new X connection failure episode logs once again.
             _xconn_backoff = poll_time
             _xconn_error_logged = False
-            _last_error = None
+            _seen_errors = set()
             _error_repeats = 0
         except (FatalError, OSError):
             # Fatal exceptions should quit the program
@@ -269,26 +269,31 @@ def heartbeat_loop(
                 # However, I'm unable to reproduce the OSError in a test (where I close stdout before logging),
                 # so I'm in uncharted waters here... but this solution should work.
                 signature = (type(exc).__name__, str(exc))
-                if signature != _last_error:
-                    _last_error = signature
-                    _error_repeats = 0
+                if signature not in _seen_errors:
+                    # First time we see this error in the current streak: log
+                    # a full traceback, but do not reset the repeat counter so
+                    # alternating distinct errors still accumulate backoff.
+                    _seen_errors.add(signature)
                     logger.exception(
                         "Exception thrown while trying to get active window"
                     )
                 else:
-                    # Same failure again: don't write a traceback every poll.
-                    _error_repeats += 1
+                    # Recurring error: suppress the traceback; periodically
+                    # emit a one-line summary so the log stays bounded.
                     if _error_repeats % REPEATED_ERROR_SUMMARY_EVERY == 0:
                         logger.error(
                             "Still failing to get active window (%d repeats): %s: %s",
                             _error_repeats,
                             *signature,
                         )
+                _error_repeats += 1
             except OSError:
                 break
             # Back off on repeating failures, up to 60s between polls.
+            # max(0.0, ...) guards against poll_time > 60 producing a negative
+            # sleep duration when the cap (60s) is smaller than poll_time.
             if _error_repeats:
-                sleep(min(poll_time * 2 ** min(_error_repeats, 10), 60.0) - poll_time)
+                sleep(max(0.0, min(poll_time * 2 ** min(_error_repeats, 10), 60.0) - poll_time))
 
         if current_window is None:
             logger.debug("Unable to fetch window, trying again on next poll")
