@@ -211,6 +211,7 @@ def main():
                         client.client_name,
                         exclude_title=args.exclude_title,
                         exclude_titles=args.exclude_titles,
+                        exclude_apps=args.exclude_apps,
                         research_category_map=research_category_map,
                         research_app_category_map=research_app_category_map,
                     )
@@ -403,16 +404,18 @@ def transform_window(
     research_category_map=None,
     research_app_category_map=None,
 ):
+    # App exclusion is a privacy guarantee and must run before any other
+    # transform, including research mode — a matching app must never be logged.
+    for pattern in exclude_apps or []:
+        if pattern.search(current_window.get("app", "")):
+            return None
+
     if research_category_map is not None:
         return research_transform(
             current_window,
             research_category_map,
             app_category_map=research_app_category_map,
         )
-
-    for pattern in exclude_apps or []:
-        if pattern.search(current_window.get("app", "")):
-            return None
 
     for pattern in exclude_titles or []:
         if pattern.search(current_window["title"]):

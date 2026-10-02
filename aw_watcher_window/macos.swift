@@ -151,6 +151,7 @@ var clientName = "aw-watcher-window"
 var bucketName = "\(clientName)_\(clientHostname)"
 var excludeTitle = false
 var excludeTitlePatterns: [NSRegularExpression] = []
+var excludeAppPatterns: [NSRegularExpression] = []
 var researchEnabled = false
 var researchCategoryMap: [(pattern: String, category: String)] = []
 var researchAppCategoryMap: [(app: String, category: String)] = []
@@ -211,7 +212,7 @@ encoder.dateEncodingStrategy = .custom({ date, encoder in
 start()
 RunLoop.main.run()
 
-func compileExcludeTitlePattern(_ pattern: String) -> NSRegularExpression {
+func compileExcludePattern(_ pattern: String) -> NSRegularExpression {
   do {
     return try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
   } catch let regexError {
@@ -237,7 +238,18 @@ func parseOptionalArguments(_ arguments: ArraySlice<String>) {
         error("Missing value for --exclude-titles")
         exit(1)
       }
-      excludeTitlePatterns.append(compileExcludeTitlePattern(arguments[nextIndex]))
+      excludeTitlePatterns.append(compileExcludePattern(arguments[nextIndex]))
+      index = arguments.index(after: nextIndex)
+      continue
+    }
+
+    if argument == "--exclude-apps" {
+      let nextIndex = arguments.index(after: index)
+      guard nextIndex < arguments.endIndex else {
+        error("Missing value for --exclude-apps")
+        exit(1)
+      }
+      excludeAppPatterns.append(compileExcludePattern(arguments[nextIndex]))
       index = arguments.index(after: nextIndex)
       continue
     }
@@ -281,6 +293,13 @@ func titleShouldBeExcluded(_ title: String) -> Bool {
   let range = NSRange(title.startIndex..<title.endIndex, in: title)
   return excludeTitlePatterns.contains { pattern in
     pattern.firstMatch(in: title, options: [], range: range) != nil
+  }
+}
+
+func appShouldBeExcluded(_ app: String) -> Bool {
+  let range = NSRange(app.startIndex..<app.endIndex, in: app)
+  return excludeAppPatterns.contains { pattern in
+    pattern.firstMatch(in: app, options: [], range: range) != nil
   }
 }
 
@@ -373,7 +392,7 @@ func start() {
 
   // Check that we get the 4 required arguments plus any optional flags
   if arguments.count < 5 {
-    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client> [--exclude-title] [--exclude-titles <pattern> ...] [--research] [--research-category <pattern> <category> ...] [--research-app-category <app_name> <category> ...]")
+    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client> [--exclude-title] [--exclude-titles <pattern> ...] [--exclude-apps <pattern> ...] [--research] [--research-category <pattern> <category> ...] [--research-app-category <app_name> <category> ...]")
     exit(1)
   }
 
@@ -706,6 +725,13 @@ class MainThing {
         let axApp = AXUIElementCreateApplication(frontmost.processIdentifier)
         AXUIElementSetAttributeValue(axApp, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
       }
+    }
+
+    // App exclusion is a privacy guarantee: a matching app must never produce a
+    // heartbeat, in research mode or otherwise. Mirrors the Python path, which
+    // applies exclude_apps before its research transform.
+    if appShouldBeExcluded(data.app) {
+      return
     }
 
     if researchEnabled {

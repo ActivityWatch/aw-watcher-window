@@ -6,6 +6,7 @@ def build_swift_command(
     client_name,
     exclude_title=False,
     exclude_titles=None,
+    exclude_apps=None,
     research_category_map=None,
     research_app_category_map=None,
 ):
@@ -14,6 +15,8 @@ def build_swift_command(
         command.append("--exclude-title")
     for title in exclude_titles or []:
         command.extend(["--exclude-titles", title])
+    for app in exclude_apps or []:
+        command.extend(["--exclude-apps", app])
     if research_category_map is not None:
         command.append("--research")
         for pattern, category in research_category_map.items():
