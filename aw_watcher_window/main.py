@@ -152,6 +152,11 @@ def main():
                     for title in args.exclude_titles
                     if title is not None
                 ],
+                exclude_apps=[
+                    re.compile(app)
+                    for app in (args.exclude_apps or [])
+                    if app is not None
+                ],
                 research_category_map=research_category_map,
                 research_app_category_map=research_app_category_map,
             )
@@ -164,6 +169,7 @@ def heartbeat_loop(
     strategy,
     exclude_title=False,
     exclude_titles=[],
+    exclude_apps=[],
     research_category_map=None,
     research_app_category_map=None,
 ):
@@ -203,19 +209,23 @@ def heartbeat_loop(
                 current_window,
                 exclude_title=exclude_title,
                 exclude_titles=exclude_titles,
+                exclude_apps=exclude_apps,
                 research_category_map=research_category_map,
                 research_app_category_map=research_app_category_map,
             )
 
-            now = datetime.now(timezone.utc)
-            current_window_event = Event(timestamp=now, data=current_window)
+            if current_window is None:
+                logger.debug("Window excluded by exclude_apps, skipping heartbeat")
+            else:
+                now = datetime.now(timezone.utc)
+                current_window_event = Event(timestamp=now, data=current_window)
 
-            client.heartbeat(
-                bucket_id,
-                current_window_event,
-                pulsetime=compute_pulsetime(poll_time),
-                queued=True,
-            )
+                client.heartbeat(
+                    bucket_id,
+                    current_window_event,
+                    pulsetime=compute_pulsetime(poll_time),
+                    queued=True,
+                )
 
         sleep(poll_time)
 
@@ -224,6 +234,7 @@ def transform_window(
     current_window,
     exclude_title=False,
     exclude_titles=None,
+    exclude_apps=None,
     research_category_map=None,
     research_app_category_map=None,
 ):
@@ -233,6 +244,10 @@ def transform_window(
             research_category_map,
             app_category_map=research_app_category_map,
         )
+
+    for pattern in exclude_apps or []:
+        if pattern.search(current_window.get("app", "")):
+            return None
 
     for pattern in exclude_titles or []:
         if pattern.search(current_window["title"]):
