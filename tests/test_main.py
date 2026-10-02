@@ -411,3 +411,70 @@ def test_heartbeat_loop_repeated_exception_logs_once_and_backs_off(monkeypatch, 
     # Extra backoff sleeps grow past poll_time but never exceed the 60s cap.
     assert max(sleep_calls) == 59.0  # 60s total per poll minus the 1s poll sleep
     assert sum(sleep_calls) < n_errors * 60.0
+
+
+def test_heartbeat_loop_alternating_exceptions_backs_off(monkeypatch, caplog):
+    """Alternating poll errors must still accumulate backoff and cap tracebacks at one per distinct error."""
+    import logging
+
+    n_errors = 20
+    calls = [0]
+    sleep_calls = []
+    # Two distinct RuntimeErrors that alternate each poll.
+    error_msgs = ["Error type A", "Error type B"]
+
+    def fake_get_window(_strategy):
+        calls[0] += 1
+        if calls[0] <= n_errors:
+            raise RuntimeError(error_msgs[calls[0] % 2])
+        raise main_module.FatalError()
+
+    class FakeClient:
+        def heartbeat(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr(main_module, "get_current_window", fake_get_window)
+    monkeypatch.setattr(main_module, "sleep", lambda s: sleep_calls.append(s))
+    monkeypatch.setattr(main_module.os, "getppid", lambda: 999)
+
+    with caplog.at_level(logging.ERROR, logger="aw_watcher_window.main"):
+        main_module.heartbeat_loop(
+            FakeClient(), "bucket", poll_time=1.0, strategy="xlib"
+        )
+
+    tracebacks = [
+        r for r in caplog.records if r.exc_info and "Exception thrown" in r.message
+    ]
+    # Exactly one traceback per distinct error signature (2 here), not one per poll.
+    assert len(tracebacks) == 2
+
+    # Backoff must grow: with 20 alternating errors the extra sleep must exceed
+    # poll_time (1.0) before the loop ends.
+    backoff_sleeps = [s for s in sleep_calls if s > 1.0]
+    assert len(backoff_sleeps) > 0, "Expected growing backoff on alternating errors"
+
+
+def test_heartbeat_loop_long_poll_time_no_negative_sleep(monkeypatch):
+    """poll_time > 60s must never produce a negative sleep duration."""
+    calls = [0]
+    sleep_calls = []
+
+    def fake_get_window(_strategy):
+        calls[0] += 1
+        if calls[0] <= 3:
+            raise RuntimeError("some transient error")
+        raise main_module.FatalError()
+
+    class FakeClient:
+        def heartbeat(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr(main_module, "get_current_window", fake_get_window)
+    monkeypatch.setattr(main_module, "sleep", lambda s: sleep_calls.append(s))
+    monkeypatch.setattr(main_module.os, "getppid", lambda: 999)
+
+    main_module.heartbeat_loop(
+        FakeClient(), "bucket", poll_time=120.0, strategy="xlib"
+    )
+
+    assert all(s >= 0.0 for s in sleep_calls), f"Negative sleep found: {sleep_calls}"
