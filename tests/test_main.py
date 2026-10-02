@@ -326,13 +326,13 @@ def test_heartbeat_loop_xconn_error_logs_once_and_backs_off(monkeypatch, caplog)
     """DisplayConnectionError must log exactly once and apply exponential backoff."""
     import logging
 
-    # Minimal fake DisplayConnectionError that _is_xconn_error will recognise
-    try:
-        import Xlib.error
-    except ImportError:
-        pytest.skip("python-xlib not available")
+    # Minimal fake DisplayConnectionError that _is_xconn_error will recognise.
+    # Skip only when python-xlib is unavailable; a construction error below must
+    # fail the test rather than masquerade as a missing dependency (#155 CodeQL
+    # flagged `Xlib` as possibly uninitialised after the try/except import).
+    Xlib_error = pytest.importorskip("Xlib.error")
 
-    fake_exc = Xlib.error.DisplayConnectionError(":0", b"Authorization required")
+    fake_exc = Xlib_error.DisplayConnectionError(":0", b"Authorization required")
 
     call_count = [0]
     sleep_calls = []
