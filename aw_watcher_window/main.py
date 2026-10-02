@@ -1,4 +1,5 @@
 import logging
+import multiprocessing
 import os
 import re
 import signal
@@ -38,6 +39,38 @@ def compute_pulsetime(poll_time: float) -> float:
     return max(poll_time * 1.5, poll_time + 1.0)
 
 
+# Python's multiprocessing re-executes the running binary for its helper
+# processes (the resource tracker and spawned children). In a frozen
+# PyInstaller build those helper argv shapes are passed straight to this
+# watcher's argparse and rejected, which kills the child — and eventually the
+# parent, which stops sending heartbeats
+# (ActivityWatch/aw-watcher-window#133).
+#
+# Match the *structure* of those invocations rather than a substring of an
+# arbitrary argument value: a user's `--exclude-titles multiprocessing.spawn`
+# regex is a legitimate argument and must not be mistaken for a helper.
+_MULTIPROCESSING_FORK_FLAG = "--multiprocessing-fork"
+_MULTIPROCESSING_C_PREFIXES = (
+    "from multiprocessing.resource_tracker import",
+    "from multiprocessing.spawn import",
+)
+
+
+def is_multiprocessing_child(argv):
+    """Return True if *argv* is a multiprocessing helper re-running this binary."""
+    # `spawn` re-executes as `binary --multiprocessing-fork tracker_fd=..`.
+    # CPython keys on the flag being argv[1]; only a real helper places it there.
+    if len(argv) >= 2 and argv[1] == _MULTIPROCESSING_FORK_FLAG:
+        return True
+    # The resource tracker (and Windows spawn) re-execute as
+    # `binary -c "from multiprocessing.<module> import ..."`.
+    return any(
+        arg == "-c" and argv[i + 1].lstrip().startswith(_MULTIPROCESSING_C_PREFIXES)
+        for i, arg in enumerate(argv[1:], start=1)
+        if i + 1 < len(argv)
+    )
+
+
 def kill_process(pid):
     logger.info("Killing process {}".format(pid))
     try:
@@ -71,6 +104,15 @@ def try_compile_title_regex(title):
 
 
 def main():
+    # Must run before parse_args(): in a frozen build multiprocessing re-executes
+    # this binary for helper processes and their argv would be rejected below.
+    # In a frozen child freeze_support() runs the bootstrap and does not return.
+    multiprocessing.freeze_support()
+    if is_multiprocessing_child(sys.argv):
+        # Belt and braces: a multiprocessing helper whose bootstrap
+        # freeze_support() did not claim must not fall through to argparse.
+        return
+
     args = parse_args()
 
     if sys.platform.startswith("linux") and (
