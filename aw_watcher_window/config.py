@@ -45,7 +45,9 @@ def parse_args():
     default_poll_time = config["poll_time"]
     default_exclude_title = config["exclude_title"]
     default_exclude_titles = config["exclude_titles"]
-    default_exclude_apps = config["exclude_apps"]
+    # .get() for backward compatibility: configs loaded from older dicts (and
+    # tests that mock load_config) may predate this key.
+    default_exclude_apps = config.get("exclude_apps", [])
     default_strategy_macos = config["strategy_macos"]
     default_research_enabled = config.get("research_enabled", False)
 
