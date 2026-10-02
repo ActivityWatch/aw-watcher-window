@@ -329,10 +329,10 @@ def test_heartbeat_loop_xconn_error_logs_once_and_backs_off(monkeypatch, caplog)
     # Minimal fake DisplayConnectionError that _is_xconn_error will recognise
     try:
         import Xlib.error
-
-        fake_exc = Xlib.error.DisplayConnectionError(":0", b"Authorization required")
-    except (ImportError, Exception):
+    except ImportError:
         pytest.skip("python-xlib not available")
+
+    fake_exc = Xlib.error.DisplayConnectionError(":0", b"Authorization required")
 
     call_count = [0]
     sleep_calls = []

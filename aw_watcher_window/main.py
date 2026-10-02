@@ -146,11 +146,6 @@ def main():
 
     args = parse_args()
 
-    if sys.platform.startswith("linux") and (
-        "DISPLAY" not in os.environ or not os.environ["DISPLAY"]
-    ):
-        raise Exception("DISPLAY environment variable not set")
-
     setup_logging(
         name="aw-watcher-window",
         testing=args.testing,
@@ -160,7 +155,15 @@ def main():
     )
 
     if sys.platform.startswith("linux"):
+        # Warn about Wayland *before* the DISPLAY check so pure-Wayland users
+        # (no DISPLAY set) still see the actionable message and the link to
+        # aw-watcher-window-wayland instead of a bare exception.
         _warn_wayland_once()
+
+    if sys.platform.startswith("linux") and (
+        "DISPLAY" not in os.environ or not os.environ["DISPLAY"]
+    ):
+        raise Exception("DISPLAY environment variable not set")
 
     if sys.platform == "darwin":
         background_ensure_permissions()
@@ -257,8 +260,10 @@ def heartbeat_loop(
         try:
             current_window = get_current_window(strategy)
             logger.debug(current_window)
-            # Reset backoff on a successful poll.
+            # Reset backoff and the one-shot log flag on a successful poll so
+            # a new X connection failure episode logs once again.
             _xconn_backoff = poll_time
+            _xconn_error_logged = False
         except (FatalError, OSError):
             # Fatal exceptions should quit the program
             try:
