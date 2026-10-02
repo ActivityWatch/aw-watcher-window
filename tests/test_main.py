@@ -283,3 +283,87 @@ def test_swift_strategy_propagates_helper_crash(monkeypatch):
     with pytest.raises(SystemExit) as exc:
         main_module.main()
     assert exc.value.code == 134
+
+
+# --- Wayland / X-auth diagnostic tests ---
+
+
+def test_warn_wayland_once_logs_on_wayland_display(monkeypatch, caplog):
+    monkeypatch.setenv("WAYLAND_DISPLAY", "wayland-0")
+    monkeypatch.delenv("XDG_SESSION_TYPE", raising=False)
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="aw_watcher_window.main"):
+        main_module._warn_wayland_once()
+
+    assert any("Wayland" in r.message for r in caplog.records)
+    assert any("aw-watcher-window-wayland" in r.message for r in caplog.records)
+
+
+def test_warn_wayland_once_logs_on_xdg_session_type(monkeypatch, caplog):
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setenv("XDG_SESSION_TYPE", "wayland")
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="aw_watcher_window.main"):
+        main_module._warn_wayland_once()
+
+    assert any("Wayland" in r.message for r in caplog.records)
+
+
+def test_warn_wayland_once_silent_on_x11(monkeypatch, caplog):
+    monkeypatch.delenv("WAYLAND_DISPLAY", raising=False)
+    monkeypatch.setenv("XDG_SESSION_TYPE", "x11")
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="aw_watcher_window.main"):
+        main_module._warn_wayland_once()
+
+    assert not caplog.records
+
+
+def test_heartbeat_loop_xconn_error_logs_once_and_backs_off(monkeypatch, caplog):
+    """DisplayConnectionError must log exactly once and apply exponential backoff."""
+    import logging
+
+    # Minimal fake DisplayConnectionError that _is_xconn_error will recognise
+    try:
+        import Xlib.error
+
+        fake_exc = Xlib.error.DisplayConnectionError(":0", b"Authorization required")
+    except (ImportError, Exception):
+        pytest.skip("python-xlib not available")
+
+    call_count = [0]
+    sleep_calls = []
+
+    def fake_get_window(_strategy):
+        call_count[0] += 1
+        if call_count[0] <= 3:
+            raise fake_exc
+        # After 3 auth errors, raise FatalError to exit the loop cleanly.
+        raise main_module.FatalError()
+
+    class FakeClient:
+        def heartbeat(self, *args, **kwargs):
+            pass
+
+    monkeypatch.setattr(main_module, "get_current_window", fake_get_window)
+    monkeypatch.setattr(main_module, "sleep", lambda s: sleep_calls.append(s))
+    monkeypatch.setattr(main_module.os, "getppid", lambda: 999)
+    monkeypatch.setattr(main_module.sys, "platform", "linux")
+
+    with caplog.at_level(logging.ERROR, logger="aw_watcher_window.main"):
+        main_module.heartbeat_loop(
+            FakeClient(),
+            "bucket",
+            poll_time=1.0,
+            strategy="xlib",
+        )
+
+    error_records = [r for r in caplog.records if "Cannot connect to X display" in r.message]
+    assert len(error_records) == 1, "Should log the auth error exactly once"
+
+    # Backoff sleeps should grow: 1s, 2s (poll_time doubles each time)
+    assert sleep_calls[0] == 1.0
+    assert sleep_calls[1] == 2.0
