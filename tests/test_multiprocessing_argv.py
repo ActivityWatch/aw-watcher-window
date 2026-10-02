@@ -24,9 +24,14 @@ RESOURCE_TRACKER_ARGV = [
     "-c",
     "from multiprocessing.resource_tracker import main;main(6)",
 ]
+SPAWN_ARGV = [
+    "aw-watcher-window",
+    "-c",
+    "from multiprocessing.spawn import spawn_main; spawn_main(tracker_fd=7, pipe_handle=9)",
+]
 
 
-@pytest.mark.parametrize("argv", [FORK_ARGV, RESOURCE_TRACKER_ARGV])
+@pytest.mark.parametrize("argv", [FORK_ARGV, RESOURCE_TRACKER_ARGV, SPAWN_ARGV])
 def test_is_multiprocessing_child_detects_helper_argv(argv):
     assert main_module.is_multiprocessing_child(argv)
 
@@ -37,13 +42,19 @@ def test_is_multiprocessing_child_detects_helper_argv(argv):
         ["aw-watcher-window"],
         ["aw-watcher-window", "--testing"],
         ["aw-watcher-window", "--strategy", "jxa"],
+        # A user's legitimate argument value must not be misread as a helper:
+        # substring matching on every argv element would silently skip the
+        # watcher for these (Greptile P1 on #154).
+        ["aw-watcher-window", "--exclude-titles", "multiprocessing.spawn"],
+        ["aw-watcher-window", "--exclude-titles", "--multiprocessing-fork"],
+        ["aw-watcher-window", "-c", "some user value"],
     ],
 )
 def test_is_multiprocessing_child_ignores_normal_argv(argv):
     assert not main_module.is_multiprocessing_child(argv)
 
 
-@pytest.mark.parametrize("argv", [FORK_ARGV, RESOURCE_TRACKER_ARGV])
+@pytest.mark.parametrize("argv", [FORK_ARGV, RESOURCE_TRACKER_ARGV, SPAWN_ARGV])
 def test_main_skips_argparse_for_multiprocessing_argv(argv, monkeypatch):
     monkeypatch.setattr(main_module.sys, "argv", argv)
     monkeypatch.setattr(main_module.multiprocessing, "freeze_support", lambda: None)
