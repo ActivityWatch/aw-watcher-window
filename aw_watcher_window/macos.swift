@@ -155,6 +155,18 @@ var researchEnabled = false
 var researchCategoryMap: [(pattern: String, category: String)] = []
 var researchAppCategoryMap: [(app: String, category: String)] = []
 
+// Set on the first checkAccess() call so the helper prompts for
+// accessibility access at most once per launch. Later checks poll silently
+// so a grant made in Settings still takes effect without a restart, instead
+// of re-prompting every 10s via start()'s retry loop.
+var hasPromptedForAccess = false
+
+// Set on the first silent checkAccess() failure so the waiting state is
+// diagnosed once per launch (which executable needs access and where to
+// grant it) instead of failing silently forever. Kept next to
+// hasPromptedForAccess: both guard checkAccess() below.
+var hasLoggedMissingAccess = false
+
 let researchBrowserApps = Set([
   "chrome",
   "google chrome",
@@ -804,6 +816,15 @@ class MainThing {
 
 // TODO I believe this is handled by the python wrapper so it isn't needed here
 func checkAccess() -> Bool {
+  if hasPromptedForAccess {
+    let trusted = AXIsProcessTrusted()
+    if !trusted && !hasLoggedMissingAccess {
+      hasLoggedMissingAccess = true
+      log("Accessibility access missing for \(CommandLine.arguments[0]). Enable \"ActivityWatch Window Helper\" under System Settings > Privacy & Security > Device control and data access (Accessibility on older macOS).")
+    }
+    return trusted
+  }
+  hasPromptedForAccess = true
   let checkOptPrompt = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as NSString
   let options = [checkOptPrompt: true]
   let accessEnabled = AXIsProcessTrustedWithOptions(options as CFDictionary?)
