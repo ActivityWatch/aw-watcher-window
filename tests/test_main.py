@@ -303,6 +303,51 @@ def test_try_compile_regex_exits_on_invalid_pattern():
         main_module.try_compile_regex("[")
 
 
+def _run_heartbeat_loop(monkeypatch, windows, **kwargs):
+    """Drive heartbeat_loop over a fixed window sequence, then stop it."""
+    heartbeats = []
+
+    class FakeClient:
+        def heartbeat(self, *args, **kw):
+            heartbeats.append(args[1])
+
+    pending = list(windows)
+
+    def fake_get_current_window(_strategy):
+        if pending:
+            return pending.pop(0)
+        # FatalError is the loop's own clean-exit signal.
+        raise main_module.FatalError("done")
+
+    monkeypatch.setattr(main_module, "get_current_window", fake_get_current_window)
+    monkeypatch.setattr(main_module, "sleep", lambda *_: None)
+    main_module.heartbeat_loop(
+        FakeClient(), "bucket", poll_time=1.0, strategy="swift", **kwargs
+    )
+    return heartbeats
+
+
+def test_heartbeat_loop_skips_heartbeat_for_excluded_app(monkeypatch):
+    heartbeats = _run_heartbeat_loop(
+        monkeypatch,
+        [{"app": "1Password", "title": "Vault"}],
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+    )
+
+    assert heartbeats == []
+
+
+def test_heartbeat_loop_sends_heartbeat_for_logged_app(monkeypatch):
+    heartbeats = _run_heartbeat_loop(
+        monkeypatch,
+        [{"app": "Chrome", "title": "Some page"}],
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+    )
+
+    assert len(heartbeats) == 1
+    assert heartbeats[0].data == {"app": "Chrome", "title": "Some page"}
+
+
 @pytest.mark.parametrize(
     "poll_time,expected_pulsetime",
     [
