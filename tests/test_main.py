@@ -354,7 +354,10 @@ def test_heartbeat_loop_excluded_app_between_allowed_windows(monkeypatch):
         monkeypatch,
         [
             {"app": "Editor", "title": "file.py"},
-            {"app": "1Password", "title": "Vault"},
+            # The excluded window's title carries its app name too, so a
+            # bypassed exclusion is caught by the title assertion below (with a
+            # plain title like "Vault" that assertion could never fail).
+            {"app": "1Password", "title": "1Password — Vault"},
             {"app": "Editor", "title": "file.py"},
         ],
         exclude_apps=[re.compile("1Password", re.IGNORECASE)],
