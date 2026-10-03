@@ -141,7 +141,9 @@ def try_compile_regex(pattern):
         return re.compile(pattern, re.IGNORECASE)
     except re.error:
         logger.error(f"Invalid regex pattern: {pattern}")
-        exit(1)
+        # explicit raise (rather than exit()) keeps this a terminating path so
+        # the function has no implicit `return None` branch (CodeQL mixed-returns)
+        raise SystemExit(1)
 
 
 def main():
