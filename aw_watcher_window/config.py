@@ -48,6 +48,11 @@ def parse_args():
     # .get() for backward compatibility: configs loaded from older dicts (and
     # tests that mock load_config) may predate this key.
     default_exclude_apps = config.get("exclude_apps", [])
+    # `exclude_apps = "1Password"` is natural TOML for a single app, but
+    # `nargs='+'` would pass the string through as-is and main.py would then
+    # iterate it character-by-character, never matching the intended pattern.
+    if isinstance(default_exclude_apps, str):
+        default_exclude_apps = [default_exclude_apps]
     default_strategy_macos = config["strategy_macos"]
     default_research_enabled = config.get("research_enabled", False)
 
