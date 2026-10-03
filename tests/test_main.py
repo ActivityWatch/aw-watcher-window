@@ -348,6 +348,27 @@ def test_heartbeat_loop_sends_heartbeat_for_logged_app(monkeypatch):
     assert heartbeats[0].data == {"app": "Chrome", "title": "Some page"}
 
 
+def test_heartbeat_loop_excluded_app_between_allowed_windows(monkeypatch):
+    """An excluded app flanked by allowed windows never reaches the client.
+
+    Guards the privacy guarantee across a sequence: the excluded window emits
+    no heartbeat, and the loop keeps processing the allowed windows on either
+    side (it does not stall or leak the suppressed window's data).
+    """
+    heartbeats = _run_heartbeat_loop(
+        monkeypatch,
+        [
+            {"app": "Editor", "title": "file.py"},
+            {"app": "1Password", "title": "Vault"},
+            {"app": "Editor", "title": "file.py"},
+        ],
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+    )
+
+    assert [hb.data["app"] for hb in heartbeats] == ["Editor", "Editor"]
+    assert all("1Password" not in hb.data.get("title", "") for hb in heartbeats)
+
+
 @pytest.mark.parametrize(
     "poll_time,expected_pulsetime",
     [
