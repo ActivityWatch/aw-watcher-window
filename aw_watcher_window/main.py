@@ -95,12 +95,16 @@ def swift_helper_exit_status(returncode):
     return returncode
 
 
-def try_compile_title_regex(title):
+def try_compile_regex(pattern):
+    # Case-insensitive to match the Swift helper's .caseInsensitive patterns,
+    # so the same config yields the same exclusion behavior on every platform.
     try:
-        return re.compile(title, re.IGNORECASE)
+        return re.compile(pattern, re.IGNORECASE)
     except re.error:
-        logger.error(f"Invalid regex pattern: {title}")
-        exit(1)
+        logger.error(f"Invalid regex pattern: {pattern}")
+        # explicit raise (rather than exit()) keeps this a terminating path so
+        # the function has no implicit `return None` branch (CodeQL mixed-returns)
+        raise SystemExit(1)
 
 
 def main():
@@ -169,6 +173,7 @@ def main():
                         client.client_name,
                         exclude_title=args.exclude_title,
                         exclude_titles=args.exclude_titles,
+                        exclude_apps=args.exclude_apps,
                         research_category_map=research_category_map,
                         research_app_category_map=research_app_category_map,
                     )
@@ -190,9 +195,14 @@ def main():
                 strategy=args.strategy,
                 exclude_title=args.exclude_title,
                 exclude_titles=[
-                    try_compile_title_regex(title)
+                    try_compile_regex(title)
                     for title in args.exclude_titles
                     if title is not None
+                ],
+                exclude_apps=[
+                    try_compile_regex(app)
+                    for app in (args.exclude_apps or [])
+                    if app is not None
                 ],
                 research_category_map=research_category_map,
                 research_app_category_map=research_app_category_map,
@@ -206,6 +216,7 @@ def heartbeat_loop(
     strategy,
     exclude_title=False,
     exclude_titles=[],
+    exclude_apps=[],
     research_category_map=None,
     research_app_category_map=None,
 ):
@@ -245,19 +256,28 @@ def heartbeat_loop(
                 current_window,
                 exclude_title=exclude_title,
                 exclude_titles=exclude_titles,
+                exclude_apps=exclude_apps,
                 research_category_map=research_category_map,
                 research_app_category_map=research_app_category_map,
             )
 
-            now = datetime.now(timezone.utc)
-            current_window_event = Event(timestamp=now, data=current_window)
+            if current_window is None:
+                # Skip without closing the previous event: an excluded app must
+                # leave a gap, not a sentinel/empty heartbeat (which would
+                # itself be logged). The server only extends the previous event
+                # within pulsetime, so the excluded interval is not attributed
+                # to it.
+                logger.debug("Window excluded by exclude_apps, skipping heartbeat")
+            else:
+                now = datetime.now(timezone.utc)
+                current_window_event = Event(timestamp=now, data=current_window)
 
-            client.heartbeat(
-                bucket_id,
-                current_window_event,
-                pulsetime=compute_pulsetime(poll_time),
-                queued=True,
-            )
+                client.heartbeat(
+                    bucket_id,
+                    current_window_event,
+                    pulsetime=compute_pulsetime(poll_time),
+                    queued=True,
+                )
 
         sleep(poll_time)
 
@@ -266,9 +286,16 @@ def transform_window(
     current_window,
     exclude_title=False,
     exclude_titles=None,
+    exclude_apps=None,
     research_category_map=None,
     research_app_category_map=None,
 ):
+    # App exclusion is a privacy guarantee and must run before any other
+    # transform, including research mode — a matching app must never be logged.
+    for pattern in exclude_apps or []:
+        if pattern.search(current_window.get("app", "")):
+            return None
+
     if research_category_map is not None:
         return research_transform(
             current_window,

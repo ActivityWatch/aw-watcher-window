@@ -174,3 +174,49 @@ def test_no_research_overrides_config_enabled(monkeypatch):
     args = config_module.parse_args()
 
     assert args.research_enabled is False
+
+
+def test_exclude_apps_string_in_config_is_coerced_to_single_pattern(monkeypatch):
+    """A bare string in config must not be iterated character-by-character.
+
+    ``exclude_apps = "1Password"`` is natural TOML for one app. argparse's
+    ``nargs='+'`` hands a string default through unchanged, and main.py would
+    then compile each *character* as a pattern — silently excluding far more
+    than the user asked for.
+    """
+    monkeypatch.setattr(
+        config_module,
+        "load_config",
+        lambda: {
+            "exclude_title": False,
+            "exclude_titles": [],
+            "exclude_apps": "1Password",
+            "poll_time": 1.0,
+            "strategy_macos": "swift",
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window"])
+
+    args = config_module.parse_args()
+
+    assert args.exclude_apps == ["1Password"]
+
+
+def test_exclude_apps_list_in_config_is_preserved(monkeypatch):
+    """The list form is the documented shape and must be untouched."""
+    monkeypatch.setattr(
+        config_module,
+        "load_config",
+        lambda: {
+            "exclude_title": False,
+            "exclude_titles": [],
+            "exclude_apps": ["1Password", "KeePassXC"],
+            "poll_time": 1.0,
+            "strategy_macos": "swift",
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window"])
+
+    args = config_module.parse_args()
+
+    assert args.exclude_apps == ["1Password", "KeePassXC"]

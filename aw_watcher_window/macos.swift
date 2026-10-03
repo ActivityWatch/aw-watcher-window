@@ -151,6 +151,7 @@ var clientName = "aw-watcher-window"
 var bucketName = "\(clientName)_\(clientHostname)"
 var excludeTitle = false
 var excludeTitlePatterns: [NSRegularExpression] = []
+var excludeAppPatterns: [NSRegularExpression] = []
 var researchEnabled = false
 var researchCategoryMap: [(pattern: String, category: String)] = []
 var researchAppCategoryMap: [(app: String, category: String)] = []
@@ -191,6 +192,10 @@ let researchBrowserApps = Set([
 
 let main = MainThing()
 var oldHeartbeat: Heartbeat?
+// Bumped whenever an excluded app clears the pending heartbeat. An async send
+// still in flight at that moment captures the generation it started under, so
+// its completion cannot resurrect the heartbeat that was just cleared.
+var heartbeatGeneration = 0
 
 let encoder = JSONEncoder()
 let formatter = ISO8601DateFormatter()
@@ -205,7 +210,7 @@ encoder.dateEncodingStrategy = .custom({ date, encoder in
 start()
 RunLoop.main.run()
 
-func compileExcludeTitlePattern(_ pattern: String) -> NSRegularExpression {
+func compileExcludePattern(_ pattern: String) -> NSRegularExpression {
   do {
     return try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
   } catch let regexError {
@@ -231,7 +236,18 @@ func parseOptionalArguments(_ arguments: ArraySlice<String>) {
         error("Missing value for --exclude-titles")
         exit(1)
       }
-      excludeTitlePatterns.append(compileExcludeTitlePattern(arguments[nextIndex]))
+      excludeTitlePatterns.append(compileExcludePattern(arguments[nextIndex]))
+      index = arguments.index(after: nextIndex)
+      continue
+    }
+
+    if argument == "--exclude-apps" {
+      let nextIndex = arguments.index(after: index)
+      guard nextIndex < arguments.endIndex else {
+        error("Missing value for --exclude-apps")
+        exit(1)
+      }
+      excludeAppPatterns.append(compileExcludePattern(arguments[nextIndex]))
       index = arguments.index(after: nextIndex)
       continue
     }
@@ -275,6 +291,13 @@ func titleShouldBeExcluded(_ title: String) -> Bool {
   let range = NSRange(title.startIndex..<title.endIndex, in: title)
   return excludeTitlePatterns.contains { pattern in
     pattern.firstMatch(in: title, options: [], range: range) != nil
+  }
+}
+
+func appShouldBeExcluded(_ app: String) -> Bool {
+  let range = NSRange(app.startIndex..<app.endIndex, in: app)
+  return excludeAppPatterns.contains { pattern in
+    pattern.firstMatch(in: app, options: [], range: range) != nil
   }
 }
 
@@ -367,7 +390,7 @@ func start() {
 
   // Check that we get the 4 required arguments plus any optional flags
   if arguments.count < 5 {
-    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client> [--exclude-title] [--exclude-titles <pattern> ...] [--research] [--research-category <pattern> <category> ...] [--research-app-category <app_name> <category> ...]")
+    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client> [--exclude-title] [--exclude-titles <pattern> ...] [--exclude-apps <pattern> ...] [--research] [--research-category <pattern> <category> ...] [--research-app-category <app_name> <category> ...]")
     exit(1)
   }
 
@@ -419,8 +442,14 @@ func createBucket() {
 }
 
 func sendHeartbeat(_ heartbeat: Heartbeat) {
-  let oldPayloadDifferent = oldHeartbeat != nil && oldHeartbeat!.data != heartbeat.data
-  let timeSinceLastHeartbeat = oldHeartbeat != nil ? heartbeat.timestamp.timeIntervalSince(oldHeartbeat!.timestamp) : -1.0
+  // Snapshot the previous heartbeat and the exclusion generation synchronously,
+  // before the async send below: the exclusion path clears `oldHeartbeat`
+  // synchronously, so the task must neither read through a value that was
+  // cleared mid-flight nor resurrect it once it completes.
+  let previousHeartbeat = oldHeartbeat
+  let generation = heartbeatGeneration
+  let oldPayloadDifferent = previousHeartbeat != nil && previousHeartbeat!.data != heartbeat.data
+  let timeSinceLastHeartbeat = previousHeartbeat != nil ? heartbeat.timestamp.timeIntervalSince(previousHeartbeat!.timestamp) : -1.0
 
   // if you resize a window a ton of events (subsecond) will be fired
   // we enforce a 1s minimum gap between events to avoid this
@@ -446,7 +475,7 @@ func sendHeartbeat(_ heartbeat: Heartbeat) {
           // we don't *think* this millisecond subtraction is necessary, but it may be:
           // https://github.com/ActivityWatch/aw-watcher-window/pull/69#discussion_r987064282
           timestamp: heartbeat.timestamp - 0.001,
-          data: oldHeartbeat!.data
+          data: previousHeartbeat!.data
         )
 
         try await sendHeartbeatSingle(refreshedOldHeartbeat, pulsetime: timeSinceLastHeartbeat + 1)
@@ -457,14 +486,19 @@ func sendHeartbeat(_ heartbeat: Heartbeat) {
     }
 
     do {
-      let since_last_seconds = oldHeartbeat != nil ? heartbeat.timestamp.timeIntervalSince(oldHeartbeat!.timestamp) : 0
+      let since_last_seconds = previousHeartbeat != nil ? heartbeat.timestamp.timeIntervalSince(previousHeartbeat!.timestamp) : 0
       try await sendHeartbeatSingle(heartbeat, pulsetime: since_last_seconds + 1)
     } catch {
       log("Failed to send heartbeat: \(error)")
       return
     }
 
-    oldHeartbeat = heartbeat
+    // Only record the heartbeat if no excluded app cleared it while this send
+    // was in flight; otherwise the excluded interval would be attributed to the
+    // preceding app through the refreshed-old-heartbeat merge above.
+    if generation == heartbeatGeneration {
+      oldHeartbeat = heartbeat
+    }
   }
 }
 
@@ -598,6 +632,21 @@ class MainThing {
     AXUIElementCopyAttributeValue(axElement, kAXTitleAttribute as CFString, &windowTitle)
 
     let applicationName = frontmost.localizedName ?? frontmost.bundleIdentifier ?? ""
+
+    // App exclusion is a privacy guarantee and must run before any browser
+    // processing: an excluded app must neither produce a heartbeat nor surface
+    // its title/URL in logs, and incognito Chrome clears the app name to ""
+    // before the later check would see it. Dropping oldHeartbeat keeps the
+    // excluded interval a gap — otherwise the next heartbeat's elapsed-time
+    // pulse would refresh the preceding app's event across the gap.
+    if appShouldBeExcluded(applicationName) {
+      // Invalidate any in-flight send so its completion cannot resurrect the
+      // heartbeat cleared here.
+      heartbeatGeneration += 1
+      oldHeartbeat = nil
+      return
+    }
+
     var data = NetworkMessage(app: applicationName, title: axString(windowTitle) ?? "")
 
     if CHROME_BROWSERS.contains(applicationName) {

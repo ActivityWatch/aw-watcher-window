@@ -57,6 +57,7 @@ def test_research_mode_passes_map_to_macos_swift_strategy(monkeypatch):
             strategy="swift",
             exclude_title=False,
             exclude_titles=[],
+            exclude_apps=[],
             research_enabled=True,
             research_category_map={"youtube": "Youtube"},
             research_app_category_map={},
@@ -108,6 +109,29 @@ def test_build_swift_command_passes_title_filters():
         "Zoom",
         "--exclude-titles",
         "Slack.*huddle",
+    ]
+
+
+def test_build_swift_command_passes_app_filters():
+    command = build_swift_command(
+        "/tmp/aw-watcher-window-macos",
+        "http://localhost:5600",
+        "bucket",
+        "host.localdomain",
+        "aw-watcher-window",
+        exclude_apps=["1Password", "KeePassXC"],
+    )
+
+    assert command == [
+        "/tmp/aw-watcher-window-macos",
+        "http://localhost:5600",
+        "bucket",
+        "host.localdomain",
+        "aw-watcher-window",
+        "--exclude-apps",
+        "1Password",
+        "--exclude-apps",
+        "KeePassXC",
     ]
 
 
@@ -200,6 +224,149 @@ def test_legacy_exclude_titles_still_apply_without_research_mode():
     assert transformed == {"app": "Chrome", "title": "excluded"}
 
 
+def test_exclude_apps_returns_none_for_matching_app():
+    window = {"app": "1Password", "title": "Vault"}
+
+    result = main_module.transform_window(
+        window,
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+    )
+
+    assert result is None
+
+
+def test_exclude_apps_passes_non_matching_app():
+    window = {"app": "Chrome", "title": "Some page"}
+
+    result = main_module.transform_window(
+        window,
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+    )
+
+    assert result == {"app": "Chrome", "title": "Some page"}
+
+
+def test_exclude_apps_regex_partial_match():
+    window = {"app": "org.gnome.Nautilus", "title": "Home"}
+
+    result = main_module.transform_window(
+        window,
+        exclude_apps=[re.compile("Nautilus")],
+    )
+
+    assert result is None
+
+
+def test_exclude_apps_empty_list_does_not_suppress():
+    window = {"app": "Terminal", "title": "bash"}
+
+    result = main_module.transform_window(window, exclude_apps=[])
+
+    assert result == {"app": "Terminal", "title": "bash"}
+
+
+def test_exclude_apps_suppresses_in_research_mode():
+    """App exclusion is a privacy guarantee and must precede research mode."""
+    window = {
+        "app": "1Password",
+        "title": "Vault",
+        "url": "https://example.com",
+    }
+
+    result = main_module.transform_window(
+        window,
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+        research_category_map={"example": "Example"},
+    )
+
+    assert result is None
+
+
+def test_try_compile_regex_is_case_insensitive():
+    """Production compiles patterns case-insensitively, matching the Swift helper."""
+    pattern = main_module.try_compile_regex("1password")
+
+    assert pattern.search("1Password") is not None
+    assert main_module.transform_window(
+        {"app": "1Password", "title": "Vault"},
+        exclude_apps=[pattern],
+    ) is None
+
+
+def test_try_compile_regex_exits_on_invalid_pattern():
+    with pytest.raises(SystemExit):
+        main_module.try_compile_regex("[")
+
+
+def _run_heartbeat_loop(monkeypatch, windows, **kwargs):
+    """Drive heartbeat_loop over a fixed window sequence, then stop it."""
+    heartbeats = []
+
+    class FakeClient:
+        def heartbeat(self, *args, **kw):
+            heartbeats.append(args[1])
+
+    pending = list(windows)
+
+    def fake_get_current_window(_strategy):
+        if pending:
+            return pending.pop(0)
+        # FatalError is the loop's own clean-exit signal.
+        raise main_module.FatalError("done")
+
+    monkeypatch.setattr(main_module, "get_current_window", fake_get_current_window)
+    monkeypatch.setattr(main_module, "sleep", lambda *_: None)
+    main_module.heartbeat_loop(
+        FakeClient(), "bucket", poll_time=1.0, strategy="swift", **kwargs
+    )
+    return heartbeats
+
+
+def test_heartbeat_loop_skips_heartbeat_for_excluded_app(monkeypatch):
+    heartbeats = _run_heartbeat_loop(
+        monkeypatch,
+        [{"app": "1Password", "title": "Vault"}],
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+    )
+
+    assert heartbeats == []
+
+
+def test_heartbeat_loop_sends_heartbeat_for_logged_app(monkeypatch):
+    heartbeats = _run_heartbeat_loop(
+        monkeypatch,
+        [{"app": "Chrome", "title": "Some page"}],
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+    )
+
+    assert len(heartbeats) == 1
+    assert heartbeats[0].data == {"app": "Chrome", "title": "Some page"}
+
+
+def test_heartbeat_loop_excluded_app_between_allowed_windows(monkeypatch):
+    """An excluded app flanked by allowed windows never reaches the client.
+
+    Guards the privacy guarantee across a sequence: the excluded window emits
+    no heartbeat, and the loop keeps processing the allowed windows on either
+    side (it does not stall or leak the suppressed window's data).
+    """
+    heartbeats = _run_heartbeat_loop(
+        monkeypatch,
+        [
+            {"app": "Editor", "title": "file.py"},
+            # The excluded window's title carries its app name too, so a
+            # bypassed exclusion is caught by the title assertion below (with a
+            # plain title like "Vault" that assertion could never fail).
+            {"app": "1Password", "title": "1Password — Vault"},
+            {"app": "Editor", "title": "file.py"},
+        ],
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+    )
+
+    assert [hb.data["app"] for hb in heartbeats] == ["Editor", "Editor"]
+    assert all("1Password" not in hb.data.get("title", "") for hb in heartbeats)
+
+
 @pytest.mark.parametrize(
     "poll_time,expected_pulsetime",
     [
@@ -274,6 +441,7 @@ def test_swift_strategy_propagates_helper_crash(monkeypatch):
             strategy="swift",
             exclude_title=False,
             exclude_titles=[],
+            exclude_apps=[],
             research_enabled=False,
             research_category_map={},
             research_app_category_map={},
