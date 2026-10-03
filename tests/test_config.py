@@ -174,3 +174,69 @@ def test_no_research_overrides_config_enabled(monkeypatch):
     args = config_module.parse_args()
 
     assert args.research_enabled is False
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ('"1Password"', ["1Password"]),
+        ('["1Password", "Secret.*"]', ["1Password", "Secret.*"]),
+        ("[]", []),
+        ('""', [""]),
+    ],
+)
+def test_exclude_titles_toml_values(tmp_path, monkeypatch, value, expected):
+    _patch_config_dir(monkeypatch, tmp_path)
+    config_dir = tmp_path / "activitywatch" / "aw-watcher-window"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "aw-watcher-window.toml").write_text(
+        f"[aw-watcher-window]\nexclude_titles = {value}\n"
+    )
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window"])
+
+    args = config_module.parse_args()
+
+    assert args.exclude_titles == expected
+    if expected == ["1Password"]:
+        from aw_watcher_window.main import transform_window, try_compile_title_regex
+
+        patterns = [try_compile_title_regex(title) for title in args.exclude_titles]
+        assert len(patterns) == 1
+        for title in ["1Password vault", "Project notes", "Terminal"]:
+            expected_title = "excluded" if title == "1Password vault" else title
+            assert transform_window(
+                {"app": "Test", "title": title}, exclude_titles=patterns
+            )["title"] == expected_title
+    if expected == [""]:
+        assert re.compile(args.exclude_titles[0]).search("any title") is not None
+
+
+@pytest.mark.parametrize("value", ["17", "true", "{pattern = 'Secret'}", '["Secret", 17]'])
+def test_invalid_exclude_titles_config_errors(tmp_path, monkeypatch, capsys, value):
+    _patch_config_dir(monkeypatch, tmp_path)
+    config_dir = tmp_path / "activitywatch" / "aw-watcher-window"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "aw-watcher-window.toml").write_text(
+        f"[aw-watcher-window]\nexclude_titles = {value}\n"
+    )
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window"])
+
+    with pytest.raises(SystemExit) as exc:
+        config_module.parse_args()
+
+    assert exc.value.code == 2
+    assert "exclude_titles must be a string or a list of strings" in capsys.readouterr().err
+
+
+def test_cli_exclude_titles_overrides_invalid_config(tmp_path, monkeypatch):
+    _patch_config_dir(monkeypatch, tmp_path)
+    config_dir = tmp_path / "activitywatch" / "aw-watcher-window"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "aw-watcher-window.toml").write_text(
+        "[aw-watcher-window]\nexclude_titles = 17\n"
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["aw-watcher-window", "--exclude-titles", "Secret.*", "Private"]
+    )
+
+    assert config_module.parse_args().exclude_titles == ["Secret.*", "Private"]

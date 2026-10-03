@@ -92,6 +92,12 @@ def parse_args():
         help="Disable Research Edition mode, even when enabled in the config file.",
     )
     parsed_args = parser.parse_args()
+    if isinstance(parsed_args.exclude_titles, str):
+        parsed_args.exclude_titles = [parsed_args.exclude_titles]
+    elif not isinstance(parsed_args.exclude_titles, list) or not all(
+        isinstance(title, str) for title in parsed_args.exclude_titles
+    ):
+        parser.error("exclude_titles must be a string or a list of strings")
     parsed_args.research_category_map = dict(config.get("research_category_map", {}))
     parsed_args.research_app_category_map = dict(config.get("research_app_category_map", {}))
     return parsed_args
