@@ -475,6 +475,10 @@ final class HeartbeatSender: @unchecked Sendable {
   private var draining = false
   private var lastEnqueued: Heartbeat?
   private var dropped = 0
+  /// Set when an excluded app becomes frontmost; the next accepted heartbeat
+  /// is sent with pulsetime 0 so the excluded interval stays a gap and is
+  /// never merged into the preceding app's event. Guarded by `lock`.
+  private var breakMerge = false
   // Only touched by the single drain task:
   private var lastSent: Heartbeat?
   private var bucketReady = false
@@ -502,6 +506,27 @@ final class HeartbeatSender: @unchecked Sendable {
       draining = true
       Task { await self.drain() }
     }
+  }
+
+  /// Privacy: called when an excluded app becomes frontmost. Drops any pending
+  /// heartbeats (they predate the exclusion) and forces the next accepted
+  /// heartbeat to be sent with pulsetime 0, so the excluded interval stays a
+  /// gap instead of being merged into the preceding app's event.
+  func dropForExclusion() {
+    lock.lock()
+    defer { lock.unlock() }
+    queue.removeAll()
+    lastEnqueued = nil
+    breakMerge = true
+  }
+
+  /// Reads and clears the break-merge flag under the lock.
+  private func consumeBreakMerge() -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    let flag = breakMerge
+    breakMerge = false
+    return flag
   }
 
   /// The heartbeat to send next: the one still in flight, else the oldest
@@ -556,6 +581,15 @@ final class HeartbeatSender: @unchecked Sendable {
   }
 
   private func send(_ heartbeat: Heartbeat) async throws {
+    if consumeBreakMerge() {
+      // An excluded app was just frontmost: leave the excluded interval as a
+      // gap. Send with pulsetime 0 so the server starts a fresh event instead
+      // of merging this heartbeat into the preceding app across the gap.
+      try await sendHeartbeatSingle(heartbeat, pulsetime: 0)
+      lastSent = heartbeat
+      return
+    }
+
     if let last = lastSent, last.data != heartbeat.data {
       debug("sending old heartbeat for merging")
       // unlike the python aw-client library, we do not enforce a `commit_interval` and instead send the old event (which is not invalid)
@@ -718,11 +752,13 @@ class MainThing {
     // App exclusion is a privacy guarantee and must run before any browser
     // processing: an excluded app must neither produce a heartbeat nor surface
     // its title/URL in logs, and incognito Chrome clears the app name to ""
-    // before the later check would see it. Dropping oldHeartbeat keeps the
-    // excluded interval a gap — otherwise the next heartbeat's elapsed-time
+    // before the later check would see it. Dropping the pending heartbeat keeps
+    // the excluded interval a gap — otherwise the next heartbeat's elapsed-time
     // pulse would refresh the preceding app's event across the gap.
     if appShouldBeExcluded(applicationName) {
-      oldHeartbeat = nil
+      // Drop pending heartbeats and force the next send to break the merge
+      // chain, so no in-flight or queued heartbeat bridges the excluded gap.
+      heartbeatSender.dropForExclusion()
       return
     }
 
