@@ -8,12 +8,15 @@ def build_swift_command(
     exclude_titles=None,
     research_category_map=None,
     research_app_category_map=None,
+    title_enrichment_macos=None,
 ):
     command = [binpath, server_address, bucket_id, client_hostname, client_name]
     if exclude_title:
         command.append("--exclude-title")
     for title in exclude_titles or []:
         command.extend(["--exclude-titles", title])
+    for app in title_enrichment_macos or []:
+        command.extend(["--title-enrichment-app", app])
     if research_category_map is not None:
         command.append("--research")
         for pattern, category in research_category_map.items():

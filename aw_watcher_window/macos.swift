@@ -151,6 +151,7 @@ var clientName = "aw-watcher-window"
 var bucketName = "\(clientName)_\(clientHostname)"
 var excludeTitle = false
 var excludeTitlePatterns: [NSRegularExpression] = []
+var titleEnrichmentApps = Set<ElectronTitleApp>()
 var researchEnabled = false
 var researchCategoryMap: [(pattern: String, category: String)] = []
 var researchAppCategoryMap: [(app: String, category: String)] = []
@@ -202,8 +203,6 @@ encoder.dateEncodingStrategy = .custom({ date, encoder in
   try container.encode(dateString)
 })
 
-start()
-RunLoop.main.run()
 
 func compileExcludeTitlePattern(_ pattern: String) -> NSRegularExpression {
   do {
@@ -232,6 +231,18 @@ func parseOptionalArguments(_ arguments: ArraySlice<String>) {
         exit(1)
       }
       excludeTitlePatterns.append(compileExcludeTitlePattern(arguments[nextIndex]))
+      index = arguments.index(after: nextIndex)
+      continue
+    }
+
+    if argument == "--title-enrichment-app" {
+      let nextIndex = arguments.index(after: index)
+      guard nextIndex < arguments.endIndex,
+        let app = ElectronTitleApp(rawValue: arguments[nextIndex]) else {
+        error("--title-enrichment-app requires Claude or Joplin")
+        exit(1)
+      }
+      titleEnrichmentApps.insert(app)
       index = arguments.index(after: nextIndex)
       continue
     }
@@ -367,7 +378,7 @@ func start() {
 
   // Check that we get the 4 required arguments plus any optional flags
   if arguments.count < 5 {
-    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client> [--exclude-title] [--exclude-titles <pattern> ...] [--research] [--research-category <pattern> <category> ...] [--research-app-category <app_name> <category> ...]")
+    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client> [--exclude-title] [--exclude-titles <pattern> ...] [--title-enrichment-app <Claude|Joplin> ...] [--research] [--research-category <pattern> <category> ...] [--research-app-category <app_name> <category> ...]")
     exit(1)
   }
 
@@ -485,6 +496,168 @@ func sendHeartbeatSingle(_ heartbeat: Heartbeat, pulsetime: Double) async throws
   debug("[heartbeat] bucket: \(bucketName), timestamp: \(heartbeat.timestamp), pulsetime: \(round(pulsetime * 10) / 10), app: \(heartbeat.data.app), title: \(heartbeat.data.title ?? ""), url: \(heartbeat.data.url ?? "")")
 }
 
+enum ElectronTitleApp: String {
+  case claude = "Claude"
+  case joplin = "Joplin"
+
+  var bundleIdentifier: String {
+    switch self {
+    case .claude: return "com.anthropic.claudefordesktop"
+    case .joplin: return "net.cozic.joplin-desktop"
+    }
+  }
+}
+
+// The reader separates AX I/O from traversal, so fixtures exercise the exact
+// production algorithm without an interactive desktop or Accessibility access.
+struct TitleElementReader<Element> {
+  let string: (Element, String) -> String?
+  let children: (Element, Int) -> [Element]
+}
+
+let liveTitleReader = TitleElementReader<AXUIElement>(
+  string: { element, attribute in
+    var value: AnyObject?
+    guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else {
+      return nil
+    }
+    if attribute == kAXURLAttribute as String, let url = value as? NSURL {
+      return url.absoluteString
+    }
+    return axString(value)
+  },
+  children: { element, limit in
+    guard limit > 0 else { return [] }
+    var count: CFIndex = 0
+    guard AXUIElementGetAttributeValueCount(element, kAXChildrenAttribute as CFString, &count) == .success,
+      count > 0 else { return [] }
+    var values: CFArray?
+    guard AXUIElementCopyAttributeValues(
+      element, kAXChildrenAttribute as CFString, 0, min(count, limit), &values
+    ) == .success, let values = values else { return [] }
+    return (values as [AnyObject]).compactMap { axElement($0) }
+  })
+
+struct ElectronTitleLookup<Element> {
+  let reader: TitleElementReader<Element>
+  // Shared across all searches for one poll, including queued elements. Bound
+  // child requests too; limiting visits alone still materializes huge arrays.
+  var remaining = 384
+
+  mutating func search(
+    _ root: Element, depthLimit: Int = Int.max,
+    visit: (Element) -> Bool,
+    descend: (Element) -> Bool = { _ in true }
+  ) -> Element? {
+    guard remaining > 0 else { return nil }
+    var queue = [(root, 0)]
+    var index = 0
+    while index < queue.count && remaining > 0 {
+      let (element, depth) = queue[index]
+      index += 1
+      remaining -= 1
+      if visit(element) { return element }
+      if depth < depthLimit && descend(element) {
+        let available = remaining - (queue.count - index)
+        if available > 0 {
+          queue.append(contentsOf: reader.children(element, available).prefix(available).map { ($0, depth + 1) })
+        }
+      }
+    }
+    return nil
+  }
+
+  mutating func title(window: Element, app: ElectronTitleApp) -> String? {
+    let read = reader.string
+    if app == .claude {
+      // Skip the bundled shell, and stop at the app's own document even when
+      // unnamed. Searching inside it for other web areas can name an embedded
+      // artifact or iframe instead of the conversation.
+      if let document = search(window, visit: { element in
+        guard read(element, "AXRole") == "AXWebArea",
+          let address = read(element, "AXURL"), let url = URL(string: address) else { return false }
+        return url.scheme == "https" && url.host == "claude.ai"
+      }) {
+        if let title = nonemptyTitle(read(document, "AXTitle")), title != app.rawValue {
+          return title
+        }
+      } else {
+        return nil
+      }
+    }
+
+    guard let main = search(window, visit: { read($0, "AXSubrole") == "AXLandmarkMain" },
+      descend: { read($0, "AXSubrole") != "AXLandmarkComplementary" }) else { return nil }
+
+    if app == .joplin {
+      // A shallow text field alone is not evidence: search/find inputs also
+      // live here. Only the explicitly labelled note-title field is supported.
+      guard let field = search(main, depthLimit: 3, visit: {
+        read($0, "AXRole") == "AXTextField" && read($0, "AXSubrole") != "AXSearchField"
+          && read($0, "AXDescription") == "Note title"
+      }) else { return nil }
+      return nonemptyTitle(read(field, "AXValue"))
+    }
+
+    var renamed = Set<String>()
+    var menus = Set<String>()
+    _ = search(main, visit: { element in
+      guard let description = read(element, "AXDescription") else { return false }
+      if read(element, "AXRole") == "AXButton", description.hasSuffix(", rename session") {
+        if let name = nonemptyTitle(String(description.dropLast(", rename session".count))) {
+          renamed.insert(name)
+        }
+      } else if read(element, "AXRole") == "AXPopUpButton", description.hasPrefix("More options for ") {
+        if let name = nonemptyTitle(String(description.dropFirst("More options for ".count))) {
+          menus.insert(name)
+        }
+      }
+      return false
+    }, descend: {
+      !["AXLandmarkComplementary", "AXApplicationGroup"].contains(read($0, "AXSubrole") ?? "")
+    })
+    // These English control labels are observed app UI, not a universal
+    // Electron contract. Unknown/localized layouts fall back rather than guess.
+    // Do not accept a partial search: unseen controls might make it ambiguous.
+    guard remaining > 0 else { return nil }
+    let matches = renamed.intersection(menus)
+    return matches.count == 1 ? matches.first : nil
+  }
+}
+
+func nonemptyTitle(_ value: String?) -> String? {
+  guard let value = value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+  return value
+}
+
+func enrichElectronTitle<Element>(
+  _ data: NetworkMessage, bundleIdentifier: String?, window: Element,
+  reader: TitleElementReader<Element>, enableAccessibility: () -> Void
+) -> NetworkMessage {
+  guard !excludeTitle, !researchEnabled,
+    let app = ElectronTitleApp(rawValue: data.app), titleEnrichmentApps.contains(app),
+    bundleIdentifier == app.bundleIdentifier,
+    nonemptyTitle(data.title) == nil || data.title == data.app else { return data }
+  var lookup = ElectronTitleLookup(reader: reader)
+  var result = data
+  if let title = lookup.title(window: window, app: app) {
+    result.title = title
+  } else {
+    enableAccessibility()
+  }
+  return result
+}
+
+func filterWindowData(_ data: NetworkMessage) -> NetworkMessage {
+  if researchEnabled { return applyResearchFilter(data) }
+  var result = data
+  if excludeTitle || titleShouldBeExcluded(data.title ?? "") {
+    result.title = "excluded"
+    result.url = nil
+  }
+  return result
+}
+
 class MainThing {
   var observer: AXObserver?
   var observedApp: AXUIElement?
@@ -511,26 +684,6 @@ class MainThing {
     "Waterfox",
     "Floorp",
   ]
-
-  // Electron apps draw their whole interface as web content and leave the
-  // native window title fixed, so the window title identifies the app but not
-  // what is open in it. The document title they set per view is on the
-  // accessibility tree's AXWebArea node, the same place Gecko keeps the URL.
-  let ELECTRON_APPS = [
-    "Claude",
-  ]
-
-  // Other Electron apps name the open view in a title field that edits it in
-  // place rather than in a document title, so they are looked up differently.
-  let ELECTRON_TITLE_FIELD_APPS = [
-    "Joplin",
-  ]
-
-  // A title field is chrome sitting directly in the view's header, so the search
-  // for one is kept shallow: anything deeper belongs to the content and must not
-  // be mistaken for a title, and a view that has no title field then costs a few
-  // elements rather than a full traversal before the next lookup is tried.
-  let TITLE_FIELD_DEPTH = 3
 
   // upper bound on accessibility elements examined per lookup, so a
   // pathological tree can't stall the watcher (the web area is typically
@@ -567,206 +720,6 @@ class MainThing {
       AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef)
       if let children = childrenRef as? [AXUIElement] {
         queue.append(contentsOf: children)
-      }
-    }
-    return nil
-  }
-
-  // Search the window's accessibility tree breadth-first for the AXWebArea
-  // node of the app's own content and return its AXTitle, the document title.
-  // Electron nests that web area inside the one for the bundled shell page,
-  // which is reached first but carries no document title, so the first titled
-  // web area is the app's current view rather than its shell.
-  func electronDocumentTitle(window: AXUIElement) -> String? {
-    var queue: [AXUIElement] = [window]
-    var index = 0
-    while index < queue.count && index < AX_TRAVERSAL_LIMIT {
-      let element = queue[index]
-      index += 1
-
-      var roleRef: AnyObject?
-      AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
-      if roleRef as? String == "AXWebArea" {
-        var titleRef: AnyObject?
-        AXUIElementCopyAttributeValue(element, kAXTitleAttribute as CFString, &titleRef)
-        if let title = titleRef as? String, !title.isEmpty {
-          return title
-        }
-      }
-
-      var childrenRef: AnyObject?
-      AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef)
-      if let children = childrenRef as? [AXUIElement] {
-        queue.append(contentsOf: children)
-      }
-    }
-    return nil
-  }
-
-  // Some Electron views set no document title at all (Claude Code sessions are
-  // one), leaving the name of what is open only on the header controls. Two of
-  // them name it: the button that renames it, and the menu that acts on it.
-  // Their accessibility descriptions wrap that name in different wording, so the
-  // name is the longest prefix of the button's description that also occurs in a
-  // menu's. Recovering it by overlap rather than by matching known wording keeps
-  // this working on localized builds, and yields nothing rather than something
-  // wrong when the view has no name to give.
-  func electronHeaderTitle(window: AXUIElement) -> String? {
-    var examined = 0
-
-    // The complementary landmark is the sidebar, which lists every other
-    // session and would otherwise be searched before the open one's header.
-    guard let main = firstLandmark(window, skipping: "AXLandmarkComplementary",
-                                   looking_for: "AXLandmarkMain", examined: &examined)
-    else { return nil }
-
-    var buttonDescriptions: [String] = []
-    var menuDescriptions: [String] = []
-    var queue: [AXUIElement] = [main]
-    var index = 0
-    while index < queue.count && examined < AX_TRAVERSAL_LIMIT {
-      let element = queue[index]
-      index += 1
-      examined += 1
-
-      // the message feed repeats per-message action controls, which describe
-      // messages rather than the view, so it is skipped rather than searched
-      var subroleRef: AnyObject?
-      AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleRef)
-      if subroleRef as? String == "AXApplicationGroup" { continue }
-
-      var roleRef: AnyObject?
-      AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
-      let role = roleRef as? String
-      if role == "AXButton" || role == "AXPopUpButton" {
-        var descriptionRef: AnyObject?
-        AXUIElementCopyAttributeValue(element, kAXDescriptionAttribute as CFString, &descriptionRef)
-        if let description = descriptionRef as? String, !description.isEmpty {
-          if role == "AXButton" {
-            buttonDescriptions.append(description)
-          } else {
-            menuDescriptions.append(description)
-          }
-        }
-      }
-
-      var childrenRef: AnyObject?
-      AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef)
-      if let children = childrenRef as? [AXUIElement] {
-        queue.append(contentsOf: children)
-      }
-    }
-
-    // Which control renames the view is not knowable in advance - the header
-    // also holds window chrome whose descriptions come first - so every button
-    // is tried against every menu and the longest overlap wins. Unrelated
-    // controls share at most an incidental word, where the pair that names the
-    // view shares the whole of it.
-    var best: String?
-    for labelled in buttonDescriptions {
-      for mentioned in menuDescriptions {
-        if let name = longestSharedPrefix(of: labelled, occurringIn: mentioned),
-           name.count > (best?.count ?? 0) {
-          best = name
-        }
-      }
-    }
-    return best
-  }
-
-  // Breadth-first search for a landmark subrole, leaving out one whose subtree
-  // is known not to hold the answer.
-  func firstLandmark(
-    _ window: AXUIElement,
-    skipping: String,
-    looking_for: String,
-    examined: inout Int
-  ) -> AXUIElement? {
-    var queue: [AXUIElement] = [window]
-    var index = 0
-    while index < queue.count && examined < AX_TRAVERSAL_LIMIT {
-      let element = queue[index]
-      index += 1
-      examined += 1
-
-      var subroleRef: AnyObject?
-      AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleRef)
-      let subrole = subroleRef as? String
-      if subrole == skipping { continue }
-      if subrole == looking_for { return element }
-
-      var childrenRef: AnyObject?
-      AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef)
-      if let children = childrenRef as? [AXUIElement] {
-        queue.append(contentsOf: children)
-      }
-    }
-    return nil
-  }
-
-  // The longest prefix of `labelled` that also appears anywhere in `mentioned`,
-  // which for two descriptions built around the same name is that name.
-  //
-  // The overlap has to be shorter than both descriptions. Each control wraps the
-  // name in wording of its own, so the name is a proper part of either one; an
-  // overlap equal to a whole description means that control added no wording and
-  // merely happens to begin the other. A control labelled "Add" beside one
-  // labelled "Add files" is such a pair, and was reported as a view's name until
-  // this required the overlap to be proper.
-  func longestSharedPrefix(of labelled: String, occurringIn mentioned: String) -> String? {
-    var end = labelled.endIndex
-    while end > labelled.startIndex {
-      let candidate = String(labelled[labelled.startIndex..<end])
-      if candidate.count >= 3 && candidate.count < mentioned.count
-          && mentioned.contains(candidate) {
-        let name = candidate.trimmingCharacters(in: CharacterSet(charactersIn: " ,-\u{2014}"))
-        if name.count >= 3 && name.count < labelled.count && name.count < mentioned.count {
-          return name
-        }
-      }
-      end = labelled.index(before: end)
-    }
-    return nil
-  }
-
-  // A view whose name is edited in place keeps it in a text field at the top of
-  // the view instead of in a document title - Joplin's note title is one - so
-  // the value of that field names the view.
-  func electronTitleFieldValue(window: AXUIElement) -> String? {
-    var examined = 0
-    guard let main = firstLandmark(window, skipping: "AXLandmarkComplementary",
-                                   looking_for: "AXLandmarkMain", examined: &examined)
-    else { return nil }
-
-    var queue: [(element: AXUIElement, depth: Int)] = [(main, 0)]
-    var index = 0
-    while index < queue.count && examined < AX_TRAVERSAL_LIMIT {
-      let (element, depth) = queue[index]
-      index += 1
-      examined += 1
-
-      var roleRef: AnyObject?
-      AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef)
-      if roleRef as? String == "AXTextField" {
-        var subroleRef: AnyObject?
-        AXUIElementCopyAttributeValue(element, kAXSubroleAttribute as CFString, &subroleRef)
-        // a search field is header chrome too, but names the query typed into it
-        // rather than the view it sits in
-        if subroleRef as? String != "AXSearchField" {
-          var valueRef: AnyObject?
-          AXUIElementCopyAttributeValue(element, kAXValueAttribute as CFString, &valueRef)
-          if let value = valueRef as? String, !value.isEmpty {
-            return value
-          }
-        }
-      }
-
-      if depth < TITLE_FIELD_DEPTH {
-        var childrenRef: AnyObject?
-        AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef)
-        if let children = childrenRef as? [AXUIElement] {
-          queue.append(contentsOf: children.map { ($0, depth + 1) })
-        }
       }
     }
     return nil
@@ -902,53 +855,18 @@ class MainThing {
         let axApp = AXUIElementCreateApplication(frontmost.processIdentifier)
         AXUIElementSetAttributeValue(axApp, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
       }
-    } else if ELECTRON_APPS.contains(applicationName) {
-      debug("Electron app detected, extracting title from accessibility tree")
-
-      let documentTitle = electronDocumentTitle(window: axElement)
-
-      // A document title that only repeats the application name names the app
-      // rather than the view, so it is no more use than the window title. That
-      // is compared against the application name and not against the window
-      // title, because the window title is not always readable and an empty one
-      // would otherwise make any document title look informative.
-      if let documentTitle, documentTitle != applicationName {
-        // the document title names the open view, where the window title only
-        // ever names the app
-        data.title = documentTitle
-      } else if let headerTitle = electronHeaderTitle(window: axElement) {
-        // no document title to distinguish this view, so fall back to the
-        // header controls
-        data.title = headerTitle
-      } else {
-        // Chromium builds its accessibility tree only once an assistive client
-        // asks for it. Setting AXManualAccessibility (which Electron exposes
-        // for exactly this) turns it on; the tree is not ready on this pass but
-        // is populated for subsequent polls and stays on for the app's session.
-        let axApp = AXUIElementCreateApplication(frontmost.processIdentifier)
-        AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, kCFBooleanTrue)
-      }
-    } else if ELECTRON_TITLE_FIELD_APPS.contains(applicationName) {
-      debug("Electron app with a title field detected, extracting title from accessibility tree")
-
-      if let titleField = electronTitleFieldValue(window: axElement) {
-        // the field the view's name is edited in holds that name
-        data.title = titleField
-      } else {
-        // as above: the tree is built only once an assistive client asks for it
-        let axApp = AXUIElementCreateApplication(frontmost.processIdentifier)
-        AXUIElementSetAttributeValue(axApp, "AXManualAccessibility" as CFString, kCFBooleanTrue)
-      }
     }
 
-    if researchEnabled {
-      data = applyResearchFilter(data)
-    } else if excludeTitle || titleShouldBeExcluded(data.title ?? "") {
-      data.title = "excluded"
-      // the URL identifies the page at least as precisely as the title does,
-      // so an excluded window must not report it either
-      data.url = nil
-    }
+    data = enrichElectronTitle(
+      data, bundleIdentifier: frontmost.bundleIdentifier,
+      window: axElement, reader: liveTitleReader,
+      enableAccessibility: {
+        let app = AXUIElementCreateApplication(frontmost.processIdentifier)
+        // Leave the flag enabled: other assistive clients may depend on it.
+        // A cold Electron tree generally becomes available on a later poll.
+        AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+      })
+    data = filterWindowData(data)
 
     let heartbeat = Heartbeat(timestamp: nowTime, data: data)
     sendHeartbeat(heartbeat)
@@ -1066,3 +984,10 @@ func checkAccess() -> Bool {
   let accessEnabled = AXIsProcessTrustedWithOptions(options as CFDictionary?)
   return accessEnabled
 }
+
+// Tests compile this same file with an offline fixture runner instead of starting
+// a watcher. Keep startup after global initialization.
+#if !AW_TITLE_TESTS
+start()
+RunLoop.main.run()
+#endif
