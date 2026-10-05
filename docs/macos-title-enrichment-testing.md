@@ -35,6 +35,10 @@ title exclusions; and cold-tree recovery. Virtual-clock tests cover the shared
 250 ms deadline, per-message timeouts, late responses, failed timeout setup,
 incomplete searches, and skipping the cold-tree write after a timeout. The
 platform timeout setter is also exercised without querying a live application.
+Injected child-count and child-copy responses exercise the production AX reader:
+after a positive count, failed, missing, truncated, or malformed child arrays
+must stop enrichment rather than let a partial search claim a unique title.
+Separate controls cover valid leaves and successful bounded child reads.
 Do not commit raw AX dumps: they can include full conversations and note contents.
 
 ## Live smoke test

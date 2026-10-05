@@ -534,6 +534,8 @@ final class TitleLookupBudget {
 
   var canRead: Bool { !stopped && now() < deadline }
 
+  func stop() { stopped = true }
+
   func perform(on element: AXUIElement, _ request: () -> AXError) -> Bool {
     let remaining = deadline - now()
     guard !stopped, remaining > 0,
@@ -557,7 +559,15 @@ final class TitleLookupBudget {
   }
 }
 
-func liveTitleReader(budget: TitleLookupBudget) -> TitleElementReader<AXUIElement> {
+func liveTitleReader(
+  budget: TitleLookupBudget,
+  childCount: @escaping (AXUIElement, UnsafeMutablePointer<CFIndex>) -> AXError = {
+    AXUIElementGetAttributeValueCount($0, kAXChildrenAttribute as CFString, $1)
+  },
+  copyChildren: @escaping (AXUIElement, CFIndex, UnsafeMutablePointer<CFArray?>) -> AXError = {
+    AXUIElementCopyAttributeValues($0, kAXChildrenAttribute as CFString, 0, $1, $2)
+  }
+) -> TitleElementReader<AXUIElement> {
   TitleElementReader<AXUIElement>(
     string: { element, attribute in
       var value: AnyObject?
@@ -575,16 +585,26 @@ func liveTitleReader(budget: TitleLookupBudget) -> TitleElementReader<AXUIElemen
       guard limit > 0 else { return [] }
       var count: CFIndex = 0
       guard budget.perform(on: element, {
-        AXUIElementGetAttributeValueCount(element, kAXChildrenAttribute as CFString, &count)
-      }),
-        count > 0 else { return [] }
+        childCount(element, &count)
+      }) else { return [] }
+      guard count >= 0 else { budget.stop(); return [] }
+      guard count > 0 else { return [] }
+      let requested = min(count, limit)
       var values: CFArray?
       guard budget.perform(on: element, {
-        AXUIElementCopyAttributeValues(
-          element, kAXChildrenAttribute as CFString, 0, min(count, limit), &values
-        )
-      }), let values = values else { return [] }
-      return (values as [AnyObject]).compactMap { axElement($0) }
+        copyChildren(element, requested, &values)
+      }), let values = values else {
+        // After a positive count, even noValue/attributeUnsupported means an
+        // unread subtree, not a leaf. Do not claim a title is unique then.
+        budget.stop()
+        return []
+      }
+      let children = (values as [AnyObject]).compactMap { axElement($0) }
+      guard CFArrayGetCount(values) == requested, children.count == requested else {
+        budget.stop()
+        return []
+      }
+      return children
     }, canRead: { budget.canRead })
 }
 

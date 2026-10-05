@@ -10,12 +10,19 @@ remaining budget and reset afterward. Transport failures, late replies, or
 incomplete searches retain the native title. Pre-existing capture paths are
 outside this enrichment-specific time budget.
 
-The full suite passes: 100 pytest tests, including 95 production Swift checks,
+The full suite passes: 100 pytest tests, including 135 production Swift checks,
 and mypy for 14 source files. Both arm64 and x86_64 compile targeting macOS 12.0;
 local packaging and packaged `--help` pass. Deliberately removing the native
 exclusion guard, accepting duplicate fields, disabling the deadline, increasing
 the per-message timeout, or allowing the cold-tree write after timeout each
 causes the regression suite to fail.
+
+The next review identified a child-copy failure after a positive child count
+that was incorrectly treated as an empty subtree. The new regression reproduced
+the wrong Joplin title before the fix. Such failures now stop the lookup; missing,
+short, oversized, or malformed child arrays also retain the native title.
+Injected responses cover both Joplin and the shared Claude header path, with
+controls for valid leaves and successful bounded child reads.
 
 Deadline tests use a virtual clock and injected AX responses; the actual
 per-object timeout setter is exercised without querying a live application.
@@ -71,6 +78,6 @@ activity titles, note bodies, URLs, and local server data are not included.
   candidate and target-app CPU, memory, and Mach ports with enrichment disabled.
 - Runtime testing on Intel and the minimum supported macOS version.
 
-This evidence supports opening a draft for maintainer review. It does not claim
+This evidence supports maintainer review. It does not claim
 merge readiness or future compatibility with app updates. Follow
 [the testing guide](macos-title-enrichment-testing.md) when repeating live checks.

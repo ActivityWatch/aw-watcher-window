@@ -184,6 +184,74 @@ expect(!setupBudget.perform(on: timeoutElement) { requestsAfterStop += 1; return
 expect(requestsAfterStop == 0, "no request starts after its deadline")
 expect(TitleLookupBudget().perform(on: timeoutElement) { .success }, "platform accepts per-element timeout configuration")
 
+// Exercise the production child reader when AX reports a nonempty subtree but
+// cannot return it. An already observed title cannot prove uniqueness then.
+for (label, result, values) in [
+  ("noValue", AXError.noValue, nil as CFArray?),
+  ("attributeUnsupported", .attributeUnsupported, nil),
+  ("missing array", .success, nil),
+  ("empty array", .success, [] as CFArray),
+  ("short array", .success, [timeoutElement] as CFArray),
+  ("oversized array", .success, [timeoutElement, timeoutElement, timeoutElement] as CFArray),
+  ("invalid element", .success, [timeoutElement, "not an AX element" as NSString] as CFArray)
+] {
+  for app in [ElectronTitleApp.joplin, .claude] {
+    resetOptions()
+    titleEnrichmentApps = [app]
+    let unread = node("AXGroup", [:], [titleField("Other note")])
+    let tree = app == .joplin ? joplin([titleField("Candidate"), unread])
+      : claude("Claude", [region(pair("Candidate") + [unread])])
+    let childBudget = TitleLookupBudget(now: { 0 }, setTimeout: { _, _ in .success })
+    var copyCalls = 0
+    let liveReader = liveTitleReader(budget: childBudget,
+      childCount: { _, count in count.pointee = 2; return .success },
+      copyChildren: { _, _, children in
+        copyCalls += 1
+        children.pointee = values
+        return result
+      })
+    let reader = TitleElementReader<FixtureElement>(string: fixtureReader.string,
+      children: { element, limit in
+        if element === unread {
+          return liveReader.children(timeoutElement, limit).map { _ in node() }
+        }
+        return fixtureReader.children(element, limit)
+      }, canRead: liveReader.canRead)
+    let native = NetworkMessage(app: app.rawValue, title: app.rawValue)
+    var writes = 0
+    let enriched = enrichElectronTitle(native, bundleIdentifier: app.bundleIdentifier,
+      window: tree, reader: reader, enableAccessibility: { writes += 1 })
+    expect(enriched == native, "\(app.rawValue) retains native title after child fetch \(label)")
+    expect(copyCalls == 1 && !childBudget.canRead && writes == 0,
+      "child fetch \(label) stops \(app.rawValue) lookup and cold-tree write")
+  }
+}
+
+// Missing children attributes and an explicit zero count are still valid
+// leaves. A successful read requests and returns only the available node budget.
+for (label, status, count, expectedCount, readable) in [
+  ("unsupported leaf", AXError.attributeUnsupported, 0, 0, true),
+  ("missing leaf", .noValue, 0, 0, true),
+  ("empty leaf", .success, 0, 0, true),
+  ("negative count", .success, -1, 0, false),
+  ("complete children", .success, 2, 2, true),
+  ("bounded children", .success, 10000, 2, true)
+] {
+  let childBudget = TitleLookupBudget(now: { 0 }, setTimeout: { _, _ in .success })
+  var requestedCounts: [CFIndex] = []
+  let reader = liveTitleReader(budget: childBudget,
+    childCount: { _, value in value.pointee = count; return status },
+    copyChildren: { _, requested, values in
+      requestedCounts.append(requested)
+      values.pointee = [timeoutElement, timeoutElement] as CFArray
+      return .success
+    })
+  expect(reader.children(timeoutElement, 2).count == expectedCount
+    && reader.canRead() == readable, "child reader handles \(label)")
+  expect(requestedCounts == (expectedCount > 0 ? [2] : []),
+    "child reader bounds or skips the copy for \(label)")
+}
+
 var slowClock: TimeInterval = 0
 var slowReads = 0
 var slowTimeouts: [Float] = []
