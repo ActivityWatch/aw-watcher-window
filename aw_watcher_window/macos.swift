@@ -513,30 +513,80 @@ enum ElectronTitleApp: String {
 struct TitleElementReader<Element> {
   let string: (Element, String) -> String?
   let children: (Element, Int) -> [Element]
+  var canRead: () -> Bool = { true }
 }
 
-let liveTitleReader = TitleElementReader<AXUIElement>(
-  string: { element, attribute in
-    var value: AnyObject?
-    guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success else {
-      return nil
+// A node limit alone does not bound synchronous AX messaging. Share one deadline
+// across every read and the cold-tree write, with a shorter per-message timeout.
+final class TitleLookupBudget {
+  private let now: () -> TimeInterval
+  private let deadline: TimeInterval
+  private let setTimeout: (AXUIElement, Float) -> AXError
+  private var stopped = false
+
+  init(seconds: TimeInterval = 0.25,
+       now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+       setTimeout: @escaping (AXUIElement, Float) -> AXError = AXUIElementSetMessagingTimeout) {
+    self.now = now
+    self.deadline = now() + seconds
+    self.setTimeout = setTimeout
+  }
+
+  var canRead: Bool { !stopped && now() < deadline }
+
+  func perform(on element: AXUIElement, _ request: () -> AXError) -> Bool {
+    let remaining = deadline - now()
+    guard !stopped, remaining > 0,
+      setTimeout(element, Float(min(0.05, remaining))) == .success else {
+      stopped = true
+      return false
     }
-    if attribute == kAXURLAttribute as String, let url = value as? NSURL {
-      return url.absoluteString
+    // Restore this object's default, not the process-wide AX timeout. Other
+    // watcher paths may reuse the focused window after enrichment finishes.
+    defer { _ = setTimeout(element, 0) }
+    guard canRead else {
+      stopped = true
+      return false
     }
-    return axString(value)
-  },
-  children: { element, limit in
-    guard limit > 0 else { return [] }
-    var count: CFIndex = 0
-    guard AXUIElementGetAttributeValueCount(element, kAXChildrenAttribute as CFString, &count) == .success,
-      count > 0 else { return [] }
-    var values: CFArray?
-    guard AXUIElementCopyAttributeValues(
-      element, kAXChildrenAttribute as CFString, 0, min(count, limit), &values
-    ) == .success, let values = values else { return [] }
-    return (values as [AnyObject]).compactMap { axElement($0) }
-  })
+    let result = request()
+    if ![AXError.success, .attributeUnsupported, .noValue].contains(result) || !canRead {
+      stopped = true
+      return false
+    }
+    return result == .success
+  }
+}
+
+func liveTitleReader(budget: TitleLookupBudget) -> TitleElementReader<AXUIElement> {
+  TitleElementReader<AXUIElement>(
+    string: { element, attribute in
+      var value: AnyObject?
+      guard budget.perform(on: element, {
+        AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
+      }) else {
+        return nil
+      }
+      if attribute == kAXURLAttribute as String, let url = value as? NSURL {
+        return url.absoluteString
+      }
+      return axString(value)
+    },
+    children: { element, limit in
+      guard limit > 0 else { return [] }
+      var count: CFIndex = 0
+      guard budget.perform(on: element, {
+        AXUIElementGetAttributeValueCount(element, kAXChildrenAttribute as CFString, &count)
+      }),
+        count > 0 else { return [] }
+      var values: CFArray?
+      guard budget.perform(on: element, {
+        AXUIElementCopyAttributeValues(
+          element, kAXChildrenAttribute as CFString, 0, min(count, limit), &values
+        )
+      }), let values = values else { return [] }
+      return (values as [AnyObject]).compactMap { axElement($0) }
+    }, canRead: { budget.canRead })
+}
 
 struct ElectronTitleLookup<Element> {
   let reader: TitleElementReader<Element>
@@ -549,10 +599,10 @@ struct ElectronTitleLookup<Element> {
     visit: (Element) -> Bool,
     descend: (Element) -> Bool = { _ in true }
   ) -> Element? {
-    guard remaining > 0 else { return nil }
+    guard remaining > 0, reader.canRead() else { return nil }
     var queue = [(root, 0)]
     var index = 0
-    while index < queue.count && remaining > 0 {
+    while index < queue.count && remaining > 0 && reader.canRead() {
       let (element, depth) = queue[index]
       index += 1
       remaining -= 1
@@ -578,7 +628,8 @@ struct ElectronTitleLookup<Element> {
           let address = read(element, "AXURL"), let url = URL(string: address) else { return false }
         return url.scheme == "https" && url.host == "claude.ai"
       }) {
-        if let title = nonemptyTitle(read(document, "AXTitle")), title != app.rawValue {
+        if let title = nonemptyTitle(read(document, "AXTitle")), title != app.rawValue,
+          reader.canRead() {
           return title
         }
       } else {
@@ -591,12 +642,21 @@ struct ElectronTitleLookup<Element> {
 
     if app == .joplin {
       // A shallow text field alone is not evidence: search/find inputs also
-      // live here. Only the explicitly labelled note-title field is supported.
-      guard let field = search(main, depthLimit: 3, visit: {
-        read($0, "AXRole") == "AXTextField" && read($0, "AXSubrole") != "AXSearchField"
-          && read($0, "AXDescription") == "Note title"
-      }) else { return nil }
-      return nonemptyTitle(read(field, "AXValue"))
+      // live here. Require exactly one labelled field in a complete search,
+      // even when duplicate fields happen to contain the same title.
+      var field: Element?
+      var count = 0
+      _ = search(main, depthLimit: 3, visit: {
+        if read($0, "AXRole") == "AXTextField" && read($0, "AXSubrole") != "AXSearchField"
+          && read($0, "AXDescription") == "Note title" {
+          field = $0
+          count += 1
+        }
+        return count > 1
+      })
+      guard count == 1, remaining > 0, reader.canRead(), let field = field,
+        let title = nonemptyTitle(read(field, "AXValue")), reader.canRead() else { return nil }
+      return title
     }
 
     var renamed = Set<String>()
@@ -619,7 +679,7 @@ struct ElectronTitleLookup<Element> {
     // These English control labels are observed app UI, not a universal
     // Electron contract. Unknown/localized layouts fall back rather than guess.
     // Do not accept a partial search: unseen controls might make it ambiguous.
-    guard remaining > 0 else { return nil }
+    guard remaining > 0, reader.canRead() else { return nil }
     let matches = renamed.intersection(menus)
     return matches.count == 1 ? matches.first : nil
   }
@@ -634,7 +694,7 @@ func enrichElectronTitle<Element>(
   _ data: NetworkMessage, bundleIdentifier: String?, window: Element,
   reader: TitleElementReader<Element>, enableAccessibility: () -> Void
 ) -> NetworkMessage {
-  guard !excludeTitle, !researchEnabled,
+  guard !excludeTitle, !researchEnabled, !titleShouldBeExcluded(data.title ?? ""),
     let app = ElectronTitleApp(rawValue: data.app), titleEnrichmentApps.contains(app),
     bundleIdentifier == app.bundleIdentifier,
     nonemptyTitle(data.title) == nil || data.title == data.app else { return data }
@@ -642,7 +702,7 @@ func enrichElectronTitle<Element>(
   var result = data
   if let title = lookup.title(window: window, app: app) {
     result.title = title
-  } else {
+  } else if reader.canRead() {
     enableAccessibility()
   }
   return result
@@ -857,14 +917,17 @@ class MainThing {
       }
     }
 
+    let titleBudget = TitleLookupBudget()
     data = enrichElectronTitle(
       data, bundleIdentifier: frontmost.bundleIdentifier,
-      window: axElement, reader: liveTitleReader,
+      window: axElement, reader: liveTitleReader(budget: titleBudget),
       enableAccessibility: {
         let app = AXUIElementCreateApplication(frontmost.processIdentifier)
         // Leave the flag enabled: other assistive clients may depend on it.
         // A cold Electron tree generally becomes available on a later poll.
-        AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        _ = titleBudget.perform(on: app) {
+          AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        }
       })
     data = filterWindowData(data)
 

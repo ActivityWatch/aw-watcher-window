@@ -118,6 +118,9 @@ expect(extract(joplin([node("AXTextField", ["AXSubrole": "AXSearchField", "AXDes
 expect(extract(joplin([node("AXTextField", ["AXDescription": "Find", "AXValue": "Query"])]), .joplin) == nil, "unrelated field ignored")
 expect(extract(joplin([titleField("")]), .joplin) == nil, "empty note")
 expect(extract(joplin([titleField("日本")]), .joplin) == "日本", "short Unicode note")
+expect(extract(joplin([titleField("First note"), titleField("Second note")]), .joplin) == nil, "duplicate note titles are ambiguous")
+expect(extract(joplin([titleField("Same note"), titleField("Same note")]), .joplin) == nil, "identical duplicate note fields are ambiguous")
+expect(extract(joplin([titleField("Note"), titleField("")]), .joplin) == nil, "empty duplicate note field is still ambiguous")
 expect(extract(joplin([node("AXTextField", ["AXDescription": "Titre de la note", "AXValue": "Exemple"])]), .joplin) == nil, "unsupported localized note field")
 expect(extract(joplin([node("AXGroup", [:], [node("AXGroup", [:], [titleField("Depth three")])])]), .joplin) == "Depth three", "depth boundary")
 expect(extract(joplin([node("AXGroup", [:], [node("AXGroup", [:], [node("AXGroup", [:], [titleField("Body content")])])])]), .joplin) == nil, "deep content ignored")
@@ -148,6 +151,70 @@ expect(cyclicLookup.title(window: cycle, app: .claude) == nil && cyclicLookup.re
 cycle.descendants = []
 var smallLookup = ElectronTitleLookup(reader: fixtureReader, remaining: 8)
 expect(smallLookup.title(window: claude("Claude", [region(pair("Candidate") + (0..<30).map { _ in node() })]), app: .claude) == nil, "incomplete header search must not claim uniqueness")
+var smallNoteLookup = ElectronTitleLookup(reader: fixtureReader, remaining: 8)
+expect(smallNoteLookup.title(window: joplin([titleField("Candidate")] + (0..<30).map { _ in node() }), app: .joplin) == nil, "incomplete note search must not claim uniqueness")
+
+// Use a virtual clock and injected AX transport to exercise the production
+// timeout path deterministically, without permissions, sleeping, or live apps.
+let timeoutElement = AXUIElementCreateApplication(getpid())
+var clock: TimeInterval = 100
+var timeouts: [Float] = []
+let budget = TitleLookupBudget(now: { clock }, setTimeout: { _, seconds in
+  timeouts.append(seconds)
+  return .success
+})
+expect(budget.perform(on: timeoutElement) { clock += 0.01; return .success }, "request within deadline succeeds")
+expect(timeouts == [0.05, 0], "AX request gets a short timeout then restores the object default")
+clock = 100.24
+expect(!budget.perform(on: timeoutElement) { clock += 0.02; return .success }, "late AX response is discarded")
+expect(timeouts[2] > 0 && timeouts[2] < 0.011 && timeouts[3] == 0, "request timeout shrinks to remaining deadline")
+var requestsAfterStop = 0
+expect(!budget.perform(on: timeoutElement) { requestsAfterStop += 1; return .success }, "expired budget refuses another request")
+expect(requestsAfterStop == 0 && timeouts.count == 4, "expired budget makes no AX calls")
+let stalledBudget = TitleLookupBudget(now: { clock }, setTimeout: { _, _ in .success })
+expect(!stalledBudget.perform(on: timeoutElement) { .cannotComplete }, "unresponsive AX call fails")
+expect(!stalledBudget.canRead, "unresponsive AX call stops the whole lookup")
+let unsupportedBudget = TitleLookupBudget(now: { clock }, setTimeout: { _, _ in .success })
+expect(!unsupportedBudget.perform(on: timeoutElement) { .attributeUnsupported } && unsupportedBudget.canRead, "missing optional AX attribute is not a transport timeout")
+let rejectedBudget = TitleLookupBudget(now: { clock }, setTimeout: { _, _ in .invalidUIElement })
+expect(!rejectedBudget.perform(on: timeoutElement) { requestsAfterStop += 1; return .success }, "failed timeout setup prevents an unbounded request")
+expect(requestsAfterStop == 0 && !rejectedBudget.canRead, "failed timeout setup stops lookup")
+let setupBudget = TitleLookupBudget(now: { clock }, setTimeout: { _, _ in clock += 1; return .success })
+expect(!setupBudget.perform(on: timeoutElement) { requestsAfterStop += 1; return .success }, "deadline reached during timeout setup skips the request")
+expect(requestsAfterStop == 0, "no request starts after its deadline")
+expect(TitleLookupBudget().perform(on: timeoutElement) { .success }, "platform accepts per-element timeout configuration")
+
+var slowClock: TimeInterval = 0
+var slowReads = 0
+var slowTimeouts: [Float] = []
+let slowBudget = TitleLookupBudget(now: { slowClock }, setTimeout: { _, seconds in
+  slowTimeouts.append(seconds)
+  return .success
+})
+let slowReader = TitleElementReader<FixtureElement>(
+  string: { element, key in
+    var value: String?
+    guard slowBudget.perform(on: timeoutElement, {
+      slowReads += 1
+      slowClock += 0.04
+      value = fixtureReader.string(element, key)
+      return .success
+    }) else { return nil }
+    return value
+  }, children: { element, limit in
+    var children: [FixtureElement] = []
+    guard slowBudget.perform(on: timeoutElement, {
+      slowReads += 1
+      slowClock += 0.04
+      children = fixtureReader.children(element, limit)
+      return .success
+    }) else { return [] }
+    return children
+  }, canRead: { slowBudget.canRead })
+var slowLookup = ElectronTitleLookup(reader: slowReader)
+expect(slowLookup.title(window: claude("Late document"), app: .claude) == nil, "slow traversal falls back without a partial title")
+expect(slowReads <= 7 && slowLookup.remaining > 0, "time budget stops traversal before the node budget")
+expect(slowTimeouts.allSatisfy { $0 >= 0 && $0 <= 0.05 }, "all traversal requests use bounded messaging timeouts")
 
 // Production opt-in/bundle checks and final privacy filter are exercised too.
 let window = claude("Private example - Claude")
@@ -170,6 +237,41 @@ expect(enriched(tree: node("AXWindow")) == original && enabled == 1, "cold tree 
 expect(enriched().title == "Private example - Claude", "cold tree recovers on next poll")
 let blank = NetworkMessage(app: "Claude", title: "")
 expect(enriched(blank).title == "Private example - Claude", "empty native title can be enriched")
+for app in [ElectronTitleApp.claude, .joplin] {
+  resetOptions()
+  titleEnrichmentApps = [app]
+  excludeTitlePatterns = [compileExcludeTitlePattern("^" + app.rawValue + "$")]
+  let native = NetworkMessage(app: app.rawValue, title: app.rawValue, url: "https://example.test/private")
+  let enabledBeforeExclusion = enabled
+  let enrichedNative = enrichElectronTitle(native, bundleIdentifier: app.bundleIdentifier,
+    window: app == .claude ? window : joplin([titleField("Private example")]),
+    reader: fixtureReader, enableAccessibility: { enabled += 1 })
+  expect(attributeReads == 0 && childRequests == 0, "native exclusion skips all AX reads for \(app.rawValue)")
+  expect(enabled == enabledBeforeExclusion, "native exclusion skips AX writes for \(app.rawValue)")
+  expect(filterWindowData(enrichedNative) == NetworkMessage(app: app.rawValue, title: "excluded", url: nil), "native exclusion survives enrichment for \(app.rawValue)")
+}
+resetOptions()
+titleEnrichmentApps = [.claude]
+excludeTitlePatterns = [compileExcludeTitlePattern("^$")]
+expect(filterWindowData(enriched(blank)).title == "excluded" && attributeReads == 0, "empty native title exclusion survives enrichment")
+excludeTitlePatterns = []
+var enabledAfterTimeout = 0
+expect(enrichElectronTitle(original, bundleIdentifier: ElectronTitleApp.claude.bundleIdentifier,
+  window: window, reader: slowReader, enableAccessibility: { enabledAfterTimeout += 1 }) == original,
+  "timed out enrichment retains the native title")
+expect(enabledAfterTimeout == 0, "timed out enrichment skips cold-tree AX write")
+var partialClock: TimeInterval = 0
+let partialBudget = TitleLookupBudget(now: { partialClock }, setTimeout: { _, _ in .success })
+let partialReader = TitleElementReader<FixtureElement>(
+  string: { element, key in
+    if element.attributes["AXTitle"] as? String == "Delayed tail" { partialClock = 1 }
+    return fixtureReader.string(element, key)
+  }, children: fixtureReader.children, canRead: { partialBudget.canRead })
+var partialLookup = ElectronTitleLookup(reader: partialReader)
+expect(partialLookup.title(window: claude("Claude", [region(pair("Candidate") + [node("AXGroup", ["AXTitle": "Delayed tail"])])]), app: .claude) == nil, "deadline after header controls rejects a partial match")
+partialClock = 0
+var partialNoteLookup = ElectronTitleLookup(reader: partialReader)
+expect(partialNoteLookup.title(window: joplin([titleField("Candidate"), node("AXGroup", ["AXTitle": "Delayed tail"])]), app: .joplin) == nil, "deadline after note field rejects a partial match")
 excludeTitle = true
 attributeReads = 0
 expect(filterWindowData(enriched()).title == "excluded" && attributeReads == 0, "exclude-title skips enrichment and redacts")

@@ -29,8 +29,12 @@ and Joplin's editor. They retain real nesting and relevant roles but replace all
 titles, session names, URLs, and note values with invented examples, discarding
 message bodies and unrelated attributes. Together they cover document titles;
 Code headers; sidebar/message exclusion;
-Joplin title fields; empty, malformed, ambiguous and localized controls; short
-Unicode names; cyclic and wide trees; app identity; privacy; and cold-tree recovery.
+Joplin title fields; duplicate, empty, malformed, ambiguous and localized controls;
+short Unicode names; cyclic and wide trees; app identity; native and enriched
+title exclusions; and cold-tree recovery. Virtual-clock tests cover the shared
+250 ms deadline, per-message timeouts, late responses, failed timeout setup,
+incomplete searches, and skipping the cold-tree write after a timeout. The
+platform timeout setter is also exercised without querying a live application.
 Do not commit raw AX dumps: they can include full conversations and note contents.
 
 ## Live smoke test

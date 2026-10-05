@@ -1,5 +1,28 @@
 # macOS title enrichment validation
 
+## Review fixes (2026-10-05)
+
+The follow-up to PR #159 preserves native-title exclusions before enrichment,
+requires exactly one Joplin title field after a complete shallow search, and
+adds a shared 250 ms enrichment deadline. Each enrichment AX read or cold-tree
+write uses a per-object messaging timeout of at most 50 ms, shortened to the
+remaining budget and reset afterward. Transport failures, late replies, or
+incomplete searches retain the native title. Pre-existing capture paths are
+outside this enrichment-specific time budget.
+
+The full suite passes: 100 pytest tests, including 95 production Swift checks,
+and mypy for 14 source files. Both arm64 and x86_64 compile targeting macOS 12.0;
+local packaging and packaged `--help` pass. Deliberately removing the native
+exclusion guard, accepting duplicate fields, disabling the deadline, increasing
+the per-message timeout, or allowing the cold-tree write after timeout each
+causes the regression suite to fail.
+
+Deadline tests use a virtual clock and injected AX responses; the actual
+per-object timeout setter is exercised without querying a live application.
+The live observations below apply to the original implementation. They have not
+been repeated against this follow-up, and do not establish live timeout behavior
+against an unresponsive app.
+
 ## Environment
 
 Validation date: 2026-10-04. Tested implementation: `a3aceda3372edc6b5711f72a58f8da73d3761d78`,

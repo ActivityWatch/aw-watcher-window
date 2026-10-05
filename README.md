@@ -47,21 +47,28 @@ The CLI equivalent is `aw-watcher-window --title-enrichment-macos Claude Joplin`
 passing `--title-enrichment-macos` with no apps disables configured enrichment
 for that run. Other platforms and the JXA/AppleScript strategies ignore this option.
 
-Existing `exclude_title` and `exclude_titles` filters apply to enriched titles.
-With `exclude_title` or Research Edition enabled, enrichment is skipped entirely.
+Existing `exclude_title` and `exclude_titles` filters apply to both native and
+enriched titles. A native-title match (including `^Claude$` or `^Joplin$`) skips
+enrichment and stays excluded. With `exclude_title` or Research Edition enabled,
+enrichment is skipped entirely.
 No document URLs or message/note bodies are added to events. An informative native
 window title is preserved, and unknown apps are never enriched by name alone.
 
 Claude's document title supports arbitrary text. Its Code-session fallback needs
 the English rename/menu labels; Joplin needs the English `Note title` field label.
 Unknown, localized, missing, or ambiguous controls retain the native window title.
+Joplin requires exactly one labelled title field in a complete shallow search.
 Titles themselves can be short, Unicode, or emoji. App interface updates can
 invalidate these selectors. Switching sessions without changing the native title
 is detected by the existing 10-second poll, so very short visits may be missed.
 
 The watcher may enable Electron accessibility for an opted-in app; this can add
-CPU/memory cost in that app. Each lookup limits both visited elements and queued
-children, but OS accessibility calls can still be delayed by an unresponsive app.
+CPU/memory cost in that app. Each enrichment lookup has a 250 ms time budget and
+limits both visited elements and queued children. Its Accessibility messages,
+including the cold-tree enable request, use at most a 50 ms timeout, shortened
+to the remaining budget. Timeout or incomplete searches retain the native title;
+OS scheduling can still add delay. These bounds apply to enrichment, not to the
+watcher's pre-existing window capture paths.
 Turning enrichment off stops these lookups; restart the target app if you also
 want it to rebuild without accessibility enabled by this watcher.
 
