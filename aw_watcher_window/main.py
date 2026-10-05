@@ -171,6 +171,7 @@ def main():
                         exclude_titles=args.exclude_titles,
                         research_category_map=research_category_map,
                         research_app_category_map=research_app_category_map,
+                        title_enrichment_macos=args.title_enrichment_macos,
                     )
                 )
                 # terminate swift process when this process dies

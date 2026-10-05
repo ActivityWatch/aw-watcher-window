@@ -60,12 +60,14 @@ def test_research_mode_passes_map_to_macos_swift_strategy(monkeypatch):
             research_enabled=True,
             research_category_map={"youtube": "Youtube"},
             research_app_category_map={},
+            title_enrichment_macos=["Claude"],
         ),
     )
 
     main_module.main()
 
     assert commands[0][-4:] == ["--research", "--research-category", "youtube", "Youtube"]
+    assert commands[0][5:7] == ["--title-enrichment-app", "Claude"]
 
 
 def test_build_swift_command_omits_optional_filters():
@@ -277,9 +279,23 @@ def test_swift_strategy_propagates_helper_crash(monkeypatch):
             research_enabled=False,
             research_category_map={},
             research_app_category_map={},
+            title_enrichment_macos=[],
         ),
     )
 
     with pytest.raises(SystemExit) as exc:
         main_module.main()
     assert exc.value.code == 134
+
+
+@pytest.mark.parametrize("apps,expected", [
+    (["Claude", "Joplin"], ["--title-enrichment-app", "Claude", "--title-enrichment-app", "Joplin"]),
+    (["ChatGPT"], ["--title-enrichment-app", "ChatGPT"]),
+    (["Claude", "Joplin", "ChatGPT"], ["--title-enrichment-app", "Claude", "--title-enrichment-app", "Joplin", "--title-enrichment-app", "ChatGPT"]),
+])
+def test_build_swift_command_passes_enrichment_apps(apps, expected):
+    command = build_swift_command(
+        "/tmp/watcher", "http://localhost:5600", "bucket", "host", "client",
+        title_enrichment_macos=apps,
+    )
+    assert command[5:] == expected

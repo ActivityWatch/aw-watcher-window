@@ -151,6 +151,7 @@ var clientName = "aw-watcher-window"
 var bucketName = "\(clientName)_\(clientHostname)"
 var excludeTitle = false
 var excludeTitlePatterns: [NSRegularExpression] = []
+var titleEnrichmentApps = Set<ElectronTitleApp>()
 var researchEnabled = false
 var researchCategoryMap: [(pattern: String, category: String)] = []
 var researchAppCategoryMap: [(app: String, category: String)] = []
@@ -202,8 +203,6 @@ encoder.dateEncodingStrategy = .custom({ date, encoder in
   try container.encode(dateString)
 })
 
-start()
-RunLoop.main.run()
 
 func compileExcludeTitlePattern(_ pattern: String) -> NSRegularExpression {
   do {
@@ -232,6 +231,18 @@ func parseOptionalArguments(_ arguments: ArraySlice<String>) {
         exit(1)
       }
       excludeTitlePatterns.append(compileExcludeTitlePattern(arguments[nextIndex]))
+      index = arguments.index(after: nextIndex)
+      continue
+    }
+
+    if argument == "--title-enrichment-app" {
+      let nextIndex = arguments.index(after: index)
+      guard nextIndex < arguments.endIndex,
+        let app = ElectronTitleApp(rawValue: arguments[nextIndex]) else {
+        error("--title-enrichment-app requires Claude, Joplin, or ChatGPT")
+        exit(1)
+      }
+      titleEnrichmentApps.insert(app)
       index = arguments.index(after: nextIndex)
       continue
     }
@@ -367,7 +378,7 @@ func start() {
 
   // Check that we get the 4 required arguments plus any optional flags
   if arguments.count < 5 {
-    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client> [--exclude-title] [--exclude-titles <pattern> ...] [--research] [--research-category <pattern> <category> ...] [--research-app-category <app_name> <category> ...]")
+    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client> [--exclude-title] [--exclude-titles <pattern> ...] [--title-enrichment-app <Claude|Joplin|ChatGPT> ...] [--research] [--research-category <pattern> <category> ...] [--research-app-category <app_name> <category> ...]")
     exit(1)
   }
 
@@ -483,6 +494,281 @@ func sendHeartbeatSingle(_ heartbeat: Heartbeat, pulsetime: Double) async throws
   }
 
   debug("[heartbeat] bucket: \(bucketName), timestamp: \(heartbeat.timestamp), pulsetime: \(round(pulsetime * 10) / 10), app: \(heartbeat.data.app), title: \(heartbeat.data.title ?? ""), url: \(heartbeat.data.url ?? "")")
+}
+
+enum ElectronTitleApp: String {
+  case claude = "Claude"
+  case joplin = "Joplin"
+  case chatgpt = "ChatGPT"
+
+  var bundleIdentifier: String {
+    switch self {
+    case .claude: return "com.anthropic.claudefordesktop"
+    case .joplin: return "net.cozic.joplin-desktop"
+    case .chatgpt: return "com.openai.codex"
+    }
+  }
+}
+
+// The reader separates AX I/O from traversal, so fixtures exercise the exact
+// production algorithm without an interactive desktop or Accessibility access.
+struct TitleElementReader<Element> {
+  let string: (Element, String) -> String?
+  let children: (Element, Int) -> [Element]
+  var canRead: () -> Bool = { true }
+}
+
+// A node limit alone does not bound synchronous AX messaging. Share one deadline
+// across every read and the cold-tree write, with a shorter per-message timeout.
+final class TitleLookupBudget {
+  private let now: () -> TimeInterval
+  private let deadline: TimeInterval
+  private let setTimeout: (AXUIElement, Float) -> AXError
+  private var stopped = false
+
+  init(seconds: TimeInterval = 0.25,
+       now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+       setTimeout: @escaping (AXUIElement, Float) -> AXError = AXUIElementSetMessagingTimeout) {
+    self.now = now
+    self.deadline = now() + seconds
+    self.setTimeout = setTimeout
+  }
+
+  var canRead: Bool { !stopped && now() < deadline }
+
+  func stop() { stopped = true }
+
+  func perform(on element: AXUIElement, _ request: () -> AXError) -> Bool {
+    let remaining = deadline - now()
+    guard !stopped, remaining > 0,
+      setTimeout(element, Float(min(0.05, remaining))) == .success else {
+      stopped = true
+      return false
+    }
+    // Restore this object's default, not the process-wide AX timeout. Other
+    // watcher paths may reuse the focused window after enrichment finishes.
+    defer { _ = setTimeout(element, 0) }
+    guard canRead else {
+      stopped = true
+      return false
+    }
+    let result = request()
+    if ![AXError.success, .attributeUnsupported, .noValue].contains(result) || !canRead {
+      stopped = true
+      return false
+    }
+    return result == .success
+  }
+}
+
+func liveTitleReader(
+  budget: TitleLookupBudget,
+  childCount: @escaping (AXUIElement, UnsafeMutablePointer<CFIndex>) -> AXError = {
+    AXUIElementGetAttributeValueCount($0, kAXChildrenAttribute as CFString, $1)
+  },
+  copyChildren: @escaping (AXUIElement, CFIndex, UnsafeMutablePointer<CFArray?>) -> AXError = {
+    AXUIElementCopyAttributeValues($0, kAXChildrenAttribute as CFString, 0, $1, $2)
+  }
+) -> TitleElementReader<AXUIElement> {
+  TitleElementReader<AXUIElement>(
+    string: { element, attribute in
+      var value: AnyObject?
+      guard budget.perform(on: element, {
+        AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
+      }) else {
+        return nil
+      }
+      if attribute == kAXURLAttribute as String, let url = value as? NSURL {
+        return url.absoluteString
+      }
+      return axString(value)
+    },
+    children: { element, limit in
+      guard limit > 0 else { return [] }
+      var count: CFIndex = 0
+      guard budget.perform(on: element, {
+        childCount(element, &count)
+      }) else { return [] }
+      guard count >= 0 else { budget.stop(); return [] }
+      guard count > 0 else { return [] }
+      let requested = min(count, limit)
+      var values: CFArray?
+      guard budget.perform(on: element, {
+        copyChildren(element, requested, &values)
+      }), let values = values else {
+        // After a positive count, even noValue/attributeUnsupported means an
+        // unread subtree, not a leaf. Do not claim a title is unique then.
+        budget.stop()
+        return []
+      }
+      let children = (values as [AnyObject]).compactMap { axElement($0) }
+      guard CFArrayGetCount(values) == requested, children.count == requested else {
+        budget.stop()
+        return []
+      }
+      return children
+    }, canRead: { budget.canRead })
+}
+
+struct ElectronTitleLookup<Element> {
+  let reader: TitleElementReader<Element>
+  // Shared across all searches for one poll, including queued elements. Bound
+  // child requests too; limiting visits alone still materializes huge arrays.
+  var remaining = 384
+
+  mutating func search(
+    _ root: Element, depthLimit: Int = Int.max,
+    visit: (Element) -> Bool,
+    descend: (Element) -> Bool = { _ in true }
+  ) -> Element? {
+    guard remaining > 0, reader.canRead() else { return nil }
+    var queue = [(root, 0)]
+    var index = 0
+    while index < queue.count && remaining > 0 && reader.canRead() {
+      let (element, depth) = queue[index]
+      index += 1
+      remaining -= 1
+      if visit(element) { return element }
+      if depth < depthLimit && descend(element) {
+        let available = remaining - (queue.count - index)
+        if available > 0 {
+          queue.append(contentsOf: reader.children(element, available).prefix(available).map { ($0, depth + 1) })
+        }
+      }
+    }
+    return nil
+  }
+
+  mutating func chatgptTitle(window: Element) -> String? {
+    // The Electron ChatGPT app keeps its native window title fixed while the
+    // main renderer updates document.title. Only use that renderer's document;
+    // embedded browser/artifact documents and sidebar labels are not titles.
+    let read = reader.string
+    var document: Element?
+    var count = 0
+    var complete = true
+    _ = search(window, visit: { element in
+      guard let role = read(element, "AXRole") else { complete = false; return true }
+      guard role == "AXWebArea" else { return false }
+      guard let address = read(element, "AXURL"), let url = URL(string: address),
+        url.scheme != nil else { complete = false; return true }
+      guard url.scheme == "app", url.host == "-", url.path == "/index.html",
+        url.user == nil, url.password == nil, url.port == nil else { return false }
+      document = element
+      count += 1
+      return count > 1
+    }, descend: {
+      guard let role = read($0, "AXRole") else { complete = false; return false }
+      return role != "AXWebArea"
+    })
+    // Finish the search outside web documents to reject multiple main renderers
+    // or an unread sibling. Never descend into messages, sidebars, or iframes.
+    guard complete, count == 1, remaining > 0, reader.canRead(), let document = document,
+      let title = nonemptyTitle(read(document, "AXTitle")),
+      title != ElectronTitleApp.chatgpt.rawValue, reader.canRead() else { return nil }
+    return title
+  }
+
+  mutating func title(window: Element, app: ElectronTitleApp) -> String? {
+    if app == .chatgpt { return chatgptTitle(window: window) }
+    let read = reader.string
+    if app == .claude {
+      // Skip the bundled shell, and stop at the app's own document even when
+      // unnamed. Searching inside it for other web areas can name an embedded
+      // artifact or iframe instead of the conversation.
+      if let document = search(window, visit: { element in
+        guard read(element, "AXRole") == "AXWebArea",
+          let address = read(element, "AXURL"), let url = URL(string: address) else { return false }
+        return url.scheme == "https" && url.host == "claude.ai"
+      }) {
+        if let title = nonemptyTitle(read(document, "AXTitle")), title != app.rawValue,
+          reader.canRead() {
+          return title
+        }
+      } else {
+        return nil
+      }
+    }
+
+    guard let main = search(window, visit: { read($0, "AXSubrole") == "AXLandmarkMain" },
+      descend: { read($0, "AXSubrole") != "AXLandmarkComplementary" }) else { return nil }
+
+    if app == .joplin {
+      // A shallow text field alone is not evidence: search/find inputs also
+      // live here. Require exactly one labelled field in a complete search,
+      // even when duplicate fields happen to contain the same title.
+      var field: Element?
+      var count = 0
+      _ = search(main, depthLimit: 3, visit: {
+        if read($0, "AXRole") == "AXTextField" && read($0, "AXSubrole") != "AXSearchField"
+          && read($0, "AXDescription") == "Note title" {
+          field = $0
+          count += 1
+        }
+        return count > 1
+      })
+      guard count == 1, remaining > 0, reader.canRead(), let field = field,
+        let title = nonemptyTitle(read(field, "AXValue")), reader.canRead() else { return nil }
+      return title
+    }
+
+    var renamed = Set<String>()
+    var menus = Set<String>()
+    _ = search(main, visit: { element in
+      guard let description = read(element, "AXDescription") else { return false }
+      if read(element, "AXRole") == "AXButton", description.hasSuffix(", rename session") {
+        if let name = nonemptyTitle(String(description.dropLast(", rename session".count))) {
+          renamed.insert(name)
+        }
+      } else if read(element, "AXRole") == "AXPopUpButton", description.hasPrefix("More options for ") {
+        if let name = nonemptyTitle(String(description.dropFirst("More options for ".count))) {
+          menus.insert(name)
+        }
+      }
+      return false
+    }, descend: {
+      !["AXLandmarkComplementary", "AXApplicationGroup"].contains(read($0, "AXSubrole") ?? "")
+    })
+    // These English control labels are observed app UI, not a universal
+    // Electron contract. Unknown/localized layouts fall back rather than guess.
+    // Do not accept a partial search: unseen controls might make it ambiguous.
+    guard remaining > 0, reader.canRead() else { return nil }
+    let matches = renamed.intersection(menus)
+    return matches.count == 1 ? matches.first : nil
+  }
+}
+
+func nonemptyTitle(_ value: String?) -> String? {
+  guard let value = value, !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+  return value
+}
+
+func enrichElectronTitle<Element>(
+  _ data: NetworkMessage, bundleIdentifier: String?, window: Element,
+  reader: TitleElementReader<Element>, enableAccessibility: () -> Void
+) -> NetworkMessage {
+  guard !excludeTitle, !researchEnabled, !titleShouldBeExcluded(data.title ?? ""),
+    let app = ElectronTitleApp(rawValue: data.app), titleEnrichmentApps.contains(app),
+    bundleIdentifier == app.bundleIdentifier,
+    nonemptyTitle(data.title) == nil || data.title == data.app else { return data }
+  var lookup = ElectronTitleLookup(reader: reader)
+  var result = data
+  if let title = lookup.title(window: window, app: app) {
+    result.title = title
+  } else if reader.canRead() {
+    enableAccessibility()
+  }
+  return result
+}
+
+func filterWindowData(_ data: NetworkMessage) -> NetworkMessage {
+  if researchEnabled { return applyResearchFilter(data) }
+  var result = data
+  if excludeTitle || titleShouldBeExcluded(data.title ?? "") {
+    result.title = "excluded"
+    result.url = nil
+  }
+  return result
 }
 
 class MainThing {
@@ -684,14 +970,19 @@ class MainThing {
       }
     }
 
-    if researchEnabled {
-      data = applyResearchFilter(data)
-    } else if excludeTitle || titleShouldBeExcluded(data.title ?? "") {
-      data.title = "excluded"
-      // the URL identifies the page at least as precisely as the title does,
-      // so an excluded window must not report it either
-      data.url = nil
-    }
+    let titleBudget = TitleLookupBudget()
+    data = enrichElectronTitle(
+      data, bundleIdentifier: frontmost.bundleIdentifier,
+      window: axElement, reader: liveTitleReader(budget: titleBudget),
+      enableAccessibility: {
+        let app = AXUIElementCreateApplication(frontmost.processIdentifier)
+        // Leave the flag enabled: other assistive clients may depend on it.
+        // A cold Electron tree generally becomes available on a later poll.
+        _ = titleBudget.perform(on: app) {
+          AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
+        }
+      })
+    data = filterWindowData(data)
 
     let heartbeat = Heartbeat(timestamp: nowTime, data: data)
     sendHeartbeat(heartbeat)
@@ -809,3 +1100,10 @@ func checkAccess() -> Bool {
   let accessEnabled = AXIsProcessTrustedWithOptions(options as CFDictionary?)
   return accessEnabled
 }
+
+// Tests compile this same file with an offline fixture runner instead of starting
+// a watcher. Keep startup after global initialization.
+#if !AW_TITLE_TESTS
+start()
+RunLoop.main.run()
+#endif

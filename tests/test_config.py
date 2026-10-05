@@ -174,3 +174,52 @@ def test_no_research_overrides_config_enabled(monkeypatch):
     args = config_module.parse_args()
 
     assert args.research_enabled is False
+
+
+def test_title_enrichment_defaults_off(tmp_path, monkeypatch):
+    _patch_config_dir(monkeypatch, tmp_path)
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window"])
+    assert config_module.parse_args().title_enrichment_macos == []
+
+
+@pytest.mark.parametrize("override,expected", [([], ["Joplin"]),
+    (["--title-enrichment-macos", "Claude"], ["Claude"]),
+    (["--title-enrichment-macos", "ChatGPT"], ["ChatGPT"]),
+    (["--title-enrichment-macos", "Claude", "Joplin", "ChatGPT"], ["Claude", "Joplin", "ChatGPT"]),
+    (["--title-enrichment-macos"], [])])
+def test_title_enrichment_config_and_cli(tmp_path, monkeypatch, override, expected):
+    _patch_config_dir(monkeypatch, tmp_path)
+    directory = tmp_path / "activitywatch" / "aw-watcher-window"
+    directory.mkdir(parents=True)
+    (directory / "aw-watcher-window.toml").write_text(
+        '[aw-watcher-window]\ntitle_enrichment_macos = ["Joplin"]\n'
+    )
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window", *override])
+    assert config_module.parse_args().title_enrichment_macos == expected
+
+
+@pytest.mark.parametrize("apps", [["ChatGPT"], ["Claude", "Joplin", "ChatGPT"]])
+def test_chatgpt_enrichment_config(tmp_path, monkeypatch, apps):
+    _patch_config_dir(monkeypatch, tmp_path)
+    monkeypatch.setattr(config_module, "load_config", lambda: {
+        "poll_time": 1.0, "exclude_title": False, "exclude_titles": [],
+        "strategy_macos": "swift", "title_enrichment_macos": apps,
+    })
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window"])
+    assert config_module.parse_args().title_enrichment_macos == apps
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window", "--title-enrichment-macos"])
+    assert config_module.parse_args().title_enrichment_macos == []
+
+
+@pytest.mark.parametrize("value", ['"Claude"', '["Unknown"]', 'true', '[42]'])
+def test_invalid_title_enrichment_config_rejected(tmp_path, monkeypatch, value):
+    _patch_config_dir(monkeypatch, tmp_path)
+    directory = tmp_path / "activitywatch" / "aw-watcher-window"
+    directory.mkdir(parents=True)
+    (directory / "aw-watcher-window.toml").write_text(
+        f'[aw-watcher-window]\ntitle_enrichment_macos = {value}\n'
+    )
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window"])
+    with pytest.raises(SystemExit) as exc:
+        config_module.parse_args()
+    assert exc.value.code == 2

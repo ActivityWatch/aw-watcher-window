@@ -13,6 +13,7 @@ exclude_title = false
 exclude_titles = []
 poll_time = 1.0
 strategy_macos = "swift"
+title_enrichment_macos = []
 """.strip()
 
 # Research Edition defaults, deliberately kept out of default_config: these are
@@ -77,6 +78,14 @@ def parse_args():
         choices=["jxa", "applescript", "swift"],
         help="(macOS only) strategy to use for retrieving the active window",
     )
+    parser.add_argument(
+        "--title-enrichment-macos",
+        nargs="*",
+        choices=["Claude", "Joplin", "ChatGPT"],
+        default=config.get("title_enrichment_macos", []),
+        help="Opt in to document/session titles for these apps (macOS Swift only). "
+        "Pass with no apps to disable configured enrichment.",
+    )
     research_group = parser.add_mutually_exclusive_group()
     research_group.add_argument(
         "--research",
@@ -92,6 +101,9 @@ def parse_args():
         help="Disable Research Edition mode, even when enabled in the config file.",
     )
     parsed_args = parser.parse_args()
+    apps = parsed_args.title_enrichment_macos
+    if not isinstance(apps, list) or any(app not in ("Claude", "Joplin", "ChatGPT") for app in apps):
+        parser.error("title_enrichment_macos must be a list containing only Claude, Joplin, and/or ChatGPT")
     parsed_args.research_category_map = dict(config.get("research_category_map", {}))
     parsed_args.research_app_category_map = dict(config.get("research_app_category_map", {}))
     return parsed_args
