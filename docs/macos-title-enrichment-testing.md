@@ -85,11 +85,15 @@ the dedicated bucket in Raw Data, then stop the candidate with Ctrl-C.
    crashes, generic-title fallbacks, and app updates. A 48–72 hour run is a
    suggested validation period, not an upstream-mandated requirement.
 
-For ChatGPT, verify two titled conversations, a new chat, and an embedded page
+For ChatGPT, verify two titled conversations, a new/unnamed chat, and an embedded page
 with an unrelated title. Record whether the main window exposes an `AXWebArea`
 with URL `app://-/index.html` and the active conversation in `AXTitle`. Only the
 Electron app with bundle ID `com.openai.codex` is supported. This mapping still
 requires live confirmation; tests of synthetic trees cannot establish it.
+The independent Electron check in the validation report confirms accessibility
+title transitions in a separate app, not this ChatGPT mapping or the watcher's
+live extraction. For an empty document title, distinguish the raw `AXTitle`
+value from an inspection tool's display label or URL fallback.
 
 ## Interpreting an update
 

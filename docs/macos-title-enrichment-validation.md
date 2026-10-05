@@ -9,7 +9,7 @@ title, and the native window suppresses page-title updates. The extractor requir
 one matching main document and reads only its title; it does not traverse web
 document contents. Other bundle identifiers and detached documents fall back.
 
-ChatGPT fixtures are synthetic. Live AX inspection was unavailable in the
+ChatGPT fixtures are synthetic. Live ChatGPT AX inspection was unavailable in the
 validation environment, so no end-to-end ChatGPT capture is claimed. The mapping
 from the renderer's document title to `AXWebArea`/`AXTitle`, chat switching, new
 chats, and embedded-page isolation still need the manual smoke test described in
@@ -26,6 +26,28 @@ macOS 12.0; packaging and packaged `--help` pass. Five deliberate ChatGPT
 regressions are caught: disabling extraction, accepting another document origin,
 descending into web content, accepting duplicate documents, and accepting a
 document whose sibling cannot be identified.
+
+### Independent Electron check (2026-10-06)
+
+A separate, synthetic app running official Electron 42.3.0 / Chromium
+148.0.7778.180 was inspected through macOS accessibility on macOS 26.5.1,
+Apple Silicon. It loaded `app://-/index.html`, changed `document.title` with
+buttons, and suppressed native page-title updates. It used invented content,
+an isolated profile, and an unrelated embedded document with its own title.
+
+The accessibility inspection displayed the first and second synthetic titles,
+the generic new-chat title, and a Japanese title with an emoji on the main
+document. The native window title remained fixed. Clearing the document title
+removed the previous label; the inspection tool displayed the document URL
+instead. Returning to the first title updated the main document again. The
+embedded document appeared separately beneath it.
+
+This verifies title transitions in a real Electron accessibility tree, but not
+the production watcher's extraction or heartbeat path. The inspection tool does
+not expose raw AX attribute names, so its empty-title URL display does not
+establish the value of `AXTitle`. This separate app cannot establish ChatGPT's
+live structure, document uniqueness, or embedded-page isolation. The ChatGPT
+smoke test remains outstanding; no end-to-end ChatGPT result is claimed.
 
 ## Review fixes (2026-10-05)
 
