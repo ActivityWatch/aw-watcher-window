@@ -81,7 +81,7 @@ def parse_args():
     parser.add_argument(
         "--title-enrichment-macos",
         nargs="*",
-        choices=["Claude", "Joplin"],
+        choices=["Claude", "Joplin", "ChatGPT"],
         default=config.get("title_enrichment_macos", []),
         help="Opt in to document/session titles for these apps (macOS Swift only). "
         "Pass with no apps to disable configured enrichment.",
@@ -102,8 +102,8 @@ def parse_args():
     )
     parsed_args = parser.parse_args()
     apps = parsed_args.title_enrichment_macos
-    if not isinstance(apps, list) or any(app not in ("Claude", "Joplin") for app in apps):
-        parser.error("title_enrichment_macos must be a list containing only Claude and/or Joplin")
+    if not isinstance(apps, list) or any(app not in ("Claude", "Joplin", "ChatGPT") for app in apps):
+        parser.error("title_enrichment_macos must be a list containing only Claude, Joplin, and/or ChatGPT")
     parsed_args.research_category_map = dict(config.get("research_category_map", {}))
     parsed_args.research_app_category_map = dict(config.get("research_app_category_map", {}))
     return parsed_args

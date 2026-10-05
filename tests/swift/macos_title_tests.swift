@@ -31,6 +31,13 @@ func claude(_ title: String? = "Claude", _ children: [FixtureElement] = []) -> F
 func joplin(_ children: [FixtureElement]) -> FixtureElement {
   node("AXWindow", [:], [node("AXWebArea", ["AXTitle": "Joplin"], [region(children)])])
 }
+// ChatGPT cases are synthetic document trees, not captured live app fixtures.
+func chatgpt(_ title: String? = "ChatGPT", _ children: [FixtureElement] = [],
+             address: String = "app://-/index.html") -> FixtureElement {
+  var attributes = ["AXURL": address]
+  attributes["AXTitle"] = title
+  return node("AXWindow", [:], [node("AXWebArea", attributes, children)])
+}
 func titleField(_ title: String) -> FixtureElement {
   node("AXTextField", ["AXDescription": "Note title", "AXValue": title])
 }
@@ -110,6 +117,77 @@ expect(extract(claude("Claude", [region([
 ] + pair("Open session"))])) == "Open session", "message feed skipped")
 expect(extract(claude("Claude", [region(pair("First"))])) == "First", "first session")
 expect(extract(claude("Claude", [region(pair("Second"))])) == "Second", "changed session has no stale cache")
+
+// Only the ChatGPT main renderer may supply its document title. Its descendants
+// can contain unrelated conversations, messages, and embedded browser pages.
+for title in ["Example chat", "日本", "A", "🧪", "- draft, "] {
+  expect(extract(chatgpt(title), .chatgpt) == title, "ChatGPT document title \(title.debugDescription)")
+}
+for title in [nil, "", "  ", "ChatGPT"] as [String?] {
+  expect(extract(chatgpt(title, [node("AXWebArea", ["AXURL": "app://-/index.html", "AXTitle": "Embedded title"])]), .chatgpt) == nil,
+    "ChatGPT unnamed document never uses an embedded title")
+}
+expect(extract(chatgpt("First chat"), .chatgpt) == "First chat", "first ChatGPT chat")
+expect(extract(chatgpt("Second chat"), .chatgpt) == "Second chat", "ChatGPT chat switch has no stale cache")
+expect(extract(chatgpt(), .chatgpt) == nil, "new ChatGPT chat does not reuse previous title")
+expect(extract(chatgpt("Example", address: "app://-/index.html?initialRoute=%2Fexample#view"), .chatgpt) == "Example",
+  "main document may have a route query or fragment")
+for address in ["https://chatgpt.com/", "https://example.test/", "file:///example/index.html",
+                "app://example/index.html", "app://fs/index.html", "app://-/other.html",
+                "app://-/detached-window.html", "app://user@-/index.html",
+                "app://user:password@-/index.html", "app://-:8080/index.html"] {
+  expect(extract(chatgpt("Other content", address: address), .chatgpt) == nil,
+    "unrecognized ChatGPT document location is ignored: \(address)")
+}
+let mainDocument = chatgpt("Current chat").descendants[0]
+for unreadDocument in [node("AXWebArea"), node("AXWebArea", ["AXURL": "relative-path"])] {
+  expect(extract(node("AXWindow", [:], [mainDocument, unreadDocument]), .chatgpt) == nil,
+    "unidentified sibling document cannot prove a unique ChatGPT renderer")
+}
+let missingRole = node()
+missingRole.attributes.removeValue(forKey: "AXRole")
+expect(extract(node("AXWindow", [:], [mainDocument, missingRole]), .chatgpt) == nil,
+  "missing sibling role makes the ChatGPT document search incomplete")
+expect(extract(node("AXWindow", [:], [node("AXWebArea", ["AXURL": "https://example.test", "AXTitle": "Other page"]), mainDocument]), .chatgpt) == "Current chat",
+  "ChatGPT ignores a known unrelated sibling web document")
+expect(extract(node("AXWindow", [:], [node("AXGroup", [:], [mainDocument])]), .chatgpt) == "Current chat",
+  "ChatGPT document can be nested inside native groups")
+expect(extract(node("AXWindow", [:], [node("AXWebArea", ["AXURL": "https://example.test"], [mainDocument])]), .chatgpt) == nil,
+  "ChatGPT renderer inside an unrelated web document is ignored")
+for otherTitle in ["Other chat", "Current chat", "ChatGPT"] {
+  expect(extract(node("AXWindow", [:], [mainDocument, chatgpt(otherTitle).descendants[0]]), .chatgpt) == nil,
+    "multiple main ChatGPT documents are ambiguous even with duplicate or generic titles")
+}
+expect(extract(node("AXWindow", [:], [node("AXGroup", ["AXURL": "app://-/index.html", "AXTitle": "Not a document"])]), .chatgpt) == nil,
+  "ChatGPT document role is required")
+let privateContent = node("AXStaticText", ["AXValue": "Synthetic message body"])
+let contentTree = chatgpt("Current chat", [privateContent, region(pair("Sidebar chat"))])
+var readContent = false
+var copiedDocumentChildren = false
+let documentOnlyReader = TitleElementReader<FixtureElement>(string: { element, key in
+  if element === privateContent { readContent = true }
+  return fixtureReader.string(element, key)
+}, children: { element, limit in
+  if element === contentTree.descendants[0] { copiedDocumentChildren = true }
+  return fixtureReader.children(element, limit)
+})
+var documentOnlyLookup = ElectronTitleLookup(reader: documentOnlyReader)
+expect(documentOnlyLookup.title(window: contentTree, app: .chatgpt) == "Current chat", "ChatGPT chooses the main document title")
+expect(!readContent && !copiedDocumentChildren, "ChatGPT does not read or traverse document contents")
+let malformedChatGPT = chatgpt("Example")
+malformedChatGPT.descendants[0].attributes["AXTitle"] = NSNumber(value: 42)
+expect(extract(malformedChatGPT, .chatgpt) == nil, "malformed ChatGPT title falls back")
+var chatgptPartial = ElectronTitleLookup(reader: fixtureReader, remaining: 5)
+let wideChatGPT = node("AXWindow", [:], [mainDocument] + (0..<20).map { _ in node() })
+expect(chatgptPartial.title(window: wideChatGPT, app: .chatgpt) == nil, "incomplete ChatGPT document search cannot claim uniqueness")
+var titleReadFinished = false
+let lateTitleReader = TitleElementReader<FixtureElement>(string: { element, key in
+  let value = fixtureReader.string(element, key)
+  if key == "AXTitle" { titleReadFinished = true }
+  return value
+}, children: fixtureReader.children, canRead: { !titleReadFinished })
+var lateTitleLookup = ElectronTitleLookup(reader: lateTitleReader)
+expect(lateTitleLookup.title(window: chatgpt("Late chat"), app: .chatgpt) == nil, "ChatGPT discards a title returned after the deadline")
 
 // Joplin's title must be explicitly labelled, shallow, and not a search field.
 expect(extract(joplin([titleField("Example note")]), .joplin) == "Example note", "Joplin title")
@@ -195,12 +273,18 @@ for (label, result, values) in [
   ("oversized array", .success, [timeoutElement, timeoutElement, timeoutElement] as CFArray),
   ("invalid element", .success, [timeoutElement, "not an AX element" as NSString] as CFArray)
 ] {
-  for app in [ElectronTitleApp.joplin, .claude] {
+  for app in [ElectronTitleApp.joplin, .claude, .chatgpt] {
     resetOptions()
     titleEnrichmentApps = [app]
     let unread = node("AXGroup", [:], [titleField("Other note")])
-    let tree = app == .joplin ? joplin([titleField("Candidate"), unread])
-      : claude("Claude", [region(pair("Candidate") + [unread])])
+    let tree: FixtureElement
+    switch app {
+    case .joplin: tree = joplin([titleField("Candidate"), unread])
+    case .claude: tree = claude("Claude", [region(pair("Candidate") + [unread])])
+    case .chatgpt:
+      tree = chatgpt("Candidate")
+      tree.descendants.append(unread)
+    }
     let childBudget = TitleLookupBudget(now: { 0 }, setTimeout: { _, _ in .success })
     var copyCalls = 0
     let liveReader = liveTitleReader(budget: childBudget,
@@ -305,14 +389,14 @@ expect(enriched(tree: node("AXWindow")) == original && enabled == 1, "cold tree 
 expect(enriched().title == "Private example - Claude", "cold tree recovers on next poll")
 let blank = NetworkMessage(app: "Claude", title: "")
 expect(enriched(blank).title == "Private example - Claude", "empty native title can be enriched")
-for app in [ElectronTitleApp.claude, .joplin] {
+for app in [ElectronTitleApp.claude, .joplin, .chatgpt] {
   resetOptions()
   titleEnrichmentApps = [app]
   excludeTitlePatterns = [compileExcludeTitlePattern("^" + app.rawValue + "$")]
   let native = NetworkMessage(app: app.rawValue, title: app.rawValue, url: "https://example.test/private")
   let enabledBeforeExclusion = enabled
   let enrichedNative = enrichElectronTitle(native, bundleIdentifier: app.bundleIdentifier,
-    window: app == .claude ? window : joplin([titleField("Private example")]),
+    window: app == .claude ? window : app == .joplin ? joplin([titleField("Private example")]) : chatgpt("Private example"),
     reader: fixtureReader, enableAccessibility: { enabled += 1 })
   expect(attributeReads == 0 && childRequests == 0, "native exclusion skips all AX reads for \(app.rawValue)")
   expect(enabled == enabledBeforeExclusion, "native exclusion skips AX writes for \(app.rawValue)")
@@ -351,6 +435,54 @@ expect(filterWindowData(withURL) == NetworkMessage(app: "Claude", title: "exclud
 researchEnabled = true
 attributeReads = 0
 expect(filterWindowData(enriched()).title == nil && attributeReads == 0, "research mode skips enrichment and drops title")
+
+// ChatGPT uses the same opt-in and privacy gates; no private app storage or
+// provider API is consulted, and no document URL is added to the event.
+let nativeChatGPT = NetworkMessage(app: "ChatGPT", title: "ChatGPT")
+var chatgptWrites = 0
+func enrichedChatGPT(_ data: NetworkMessage = nativeChatGPT,
+  bundle: String? = "com.openai.codex", tree: FixtureElement = chatgpt("Example chat")) -> NetworkMessage {
+  enrichElectronTitle(data, bundleIdentifier: bundle, window: tree,
+    reader: fixtureReader, enableAccessibility: { chatgptWrites += 1 })
+}
+resetOptions()
+expect(enrichedChatGPT() == nativeChatGPT && attributeReads == 0 && childRequests == 0 && chatgptWrites == 0,
+  "ChatGPT defaults off without AX reads or writes")
+titleEnrichmentApps = [.claude, .joplin]
+expect(enrichedChatGPT() == nativeChatGPT && attributeReads == 0, "other app opt-ins do not enable ChatGPT")
+titleEnrichmentApps = [.chatgpt]
+for bundle in [nil, "example.other", "com.openai.chat"] as [String?] {
+  expect(enrichedChatGPT(bundle: bundle) == nativeChatGPT && attributeReads == 0 && childRequests == 0,
+    "unverified ChatGPT bundle identifier is not enriched")
+}
+expect(enrichedChatGPT() == NetworkMessage(app: "ChatGPT", title: "Example chat"), "ChatGPT enrichment adds a title and no URL")
+let informativeChatGPT = NetworkMessage(app: "ChatGPT", title: "Informative native title")
+let readsBeforeNativeTitle = attributeReads
+expect(enrichedChatGPT(informativeChatGPT) == informativeChatGPT && attributeReads == readsBeforeNativeTitle,
+  "informative ChatGPT native title avoids AX reads")
+for nativeTitle in [nil, "", "  "] as [String?] {
+  expect(enrichedChatGPT(NetworkMessage(app: "ChatGPT", title: nativeTitle)).title == "Example chat", "empty ChatGPT native title is enriched")
+}
+expect(enrichedChatGPT(tree: node("AXWindow")) == nativeChatGPT && chatgptWrites == 1, "ChatGPT cold tree retains native title and requests AX")
+expect(enrichedChatGPT().title == "Example chat", "ChatGPT cold tree recovers on later poll")
+for mode in ["global", "research", "native-regex"] {
+  resetOptions()
+  titleEnrichmentApps = [.chatgpt]
+  excludeTitle = mode == "global"
+  researchEnabled = mode == "research"
+  excludeTitlePatterns = mode == "native-regex" ? [compileExcludeTitlePattern("^ChatGPT$")] : []
+  let writesBeforePrivacy = chatgptWrites
+  let filtered = filterWindowData(enrichedChatGPT())
+  expect(filtered.title == (mode == "research" ? nil : "excluded") && filtered.url == nil,
+    "ChatGPT \(mode) privacy filter applies")
+  expect(attributeReads == 0 && childRequests == 0 && chatgptWrites == writesBeforePrivacy,
+    "ChatGPT \(mode) privacy mode skips AX reads and writes")
+}
+resetOptions()
+titleEnrichmentApps = [.chatgpt]
+excludeTitlePatterns = [compileExcludeTitlePattern("Example chat")]
+expect(filterWindowData(enrichedChatGPT()) == NetworkMessage(app: "ChatGPT", title: "excluded"), "ChatGPT enriched title is regex-filtered")
+
 // Minimized, sanitized captures retain real app nesting, including the deep
 // Claude header and sidebar controls. These supplement the adversarial fixtures.
 struct RecordedNode: Decodable {
@@ -373,6 +505,6 @@ for recorded in recordedCases {
   expect(extract(elements[0], ElectronTitleApp(rawValue: recorded.app)!) == recorded.expected, recorded.name)
 }
 resetOptions()
-parseOptionalArguments(["--title-enrichment-app", "Claude", "--title-enrichment-app", "Joplin"][...])
-expect(titleEnrichmentApps == [.claude, .joplin], "Swift CLI opt-in parser")
+parseOptionalArguments(["--title-enrichment-app", "Claude", "--title-enrichment-app", "Joplin", "--title-enrichment-app", "ChatGPT"][...])
+expect(titleEnrichmentApps == [.claude, .joplin, .chatgpt], "Swift CLI opt-in parser")
 print("Swift title tests passed (\(checks) checks)")

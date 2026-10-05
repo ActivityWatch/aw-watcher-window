@@ -239,7 +239,7 @@ func parseOptionalArguments(_ arguments: ArraySlice<String>) {
       let nextIndex = arguments.index(after: index)
       guard nextIndex < arguments.endIndex,
         let app = ElectronTitleApp(rawValue: arguments[nextIndex]) else {
-        error("--title-enrichment-app requires Claude or Joplin")
+        error("--title-enrichment-app requires Claude, Joplin, or ChatGPT")
         exit(1)
       }
       titleEnrichmentApps.insert(app)
@@ -378,7 +378,7 @@ func start() {
 
   // Check that we get the 4 required arguments plus any optional flags
   if arguments.count < 5 {
-    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client> [--exclude-title] [--exclude-titles <pattern> ...] [--title-enrichment-app <Claude|Joplin> ...] [--research] [--research-category <pattern> <category> ...] [--research-app-category <app_name> <category> ...]")
+    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client> [--exclude-title] [--exclude-titles <pattern> ...] [--title-enrichment-app <Claude|Joplin|ChatGPT> ...] [--research] [--research-category <pattern> <category> ...] [--research-app-category <app_name> <category> ...]")
     exit(1)
   }
 
@@ -499,11 +499,13 @@ func sendHeartbeatSingle(_ heartbeat: Heartbeat, pulsetime: Double) async throws
 enum ElectronTitleApp: String {
   case claude = "Claude"
   case joplin = "Joplin"
+  case chatgpt = "ChatGPT"
 
   var bundleIdentifier: String {
     switch self {
     case .claude: return "com.anthropic.claudefordesktop"
     case .joplin: return "net.cozic.joplin-desktop"
+    case .chatgpt: return "com.openai.codex"
     }
   }
 }
@@ -637,7 +639,38 @@ struct ElectronTitleLookup<Element> {
     return nil
   }
 
+  mutating func chatgptTitle(window: Element) -> String? {
+    // The Electron ChatGPT app keeps its native window title fixed while the
+    // main renderer updates document.title. Only use that renderer's document;
+    // embedded browser/artifact documents and sidebar labels are not titles.
+    let read = reader.string
+    var document: Element?
+    var count = 0
+    var complete = true
+    _ = search(window, visit: { element in
+      guard let role = read(element, "AXRole") else { complete = false; return true }
+      guard role == "AXWebArea" else { return false }
+      guard let address = read(element, "AXURL"), let url = URL(string: address),
+        url.scheme != nil else { complete = false; return true }
+      guard url.scheme == "app", url.host == "-", url.path == "/index.html",
+        url.user == nil, url.password == nil, url.port == nil else { return false }
+      document = element
+      count += 1
+      return count > 1
+    }, descend: {
+      guard let role = read($0, "AXRole") else { complete = false; return false }
+      return role != "AXWebArea"
+    })
+    // Finish the search outside web documents to reject multiple main renderers
+    // or an unread sibling. Never descend into messages, sidebars, or iframes.
+    guard complete, count == 1, remaining > 0, reader.canRead(), let document = document,
+      let title = nonemptyTitle(read(document, "AXTitle")),
+      title != ElectronTitleApp.chatgpt.rawValue, reader.canRead() else { return nil }
+    return title
+  }
+
   mutating func title(window: Element, app: ElectronTitleApp) -> String? {
+    if app == .chatgpt { return chatgptTitle(window: window) }
     let read = reader.string
     if app == .claude {
       // Skip the bundled shell, and stop at the app's own document even when

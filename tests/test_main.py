@@ -288,11 +288,14 @@ def test_swift_strategy_propagates_helper_crash(monkeypatch):
     assert exc.value.code == 134
 
 
-def test_build_swift_command_passes_enrichment_apps():
+@pytest.mark.parametrize("apps,expected", [
+    (["Claude", "Joplin"], ["--title-enrichment-app", "Claude", "--title-enrichment-app", "Joplin"]),
+    (["ChatGPT"], ["--title-enrichment-app", "ChatGPT"]),
+    (["Claude", "Joplin", "ChatGPT"], ["--title-enrichment-app", "Claude", "--title-enrichment-app", "Joplin", "--title-enrichment-app", "ChatGPT"]),
+])
+def test_build_swift_command_passes_enrichment_apps(apps, expected):
     command = build_swift_command(
         "/tmp/watcher", "http://localhost:5600", "bucket", "host", "client",
-        title_enrichment_macos=["Claude", "Joplin"],
+        title_enrichment_macos=apps,
     )
-    assert command[5:] == [
-        "--title-enrichment-app", "Claude", "--title-enrichment-app", "Joplin"
-    ]
+    assert command[5:] == expected

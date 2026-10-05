@@ -184,6 +184,8 @@ def test_title_enrichment_defaults_off(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("override,expected", [([], ["Joplin"]),
     (["--title-enrichment-macos", "Claude"], ["Claude"]),
+    (["--title-enrichment-macos", "ChatGPT"], ["ChatGPT"]),
+    (["--title-enrichment-macos", "Claude", "Joplin", "ChatGPT"], ["Claude", "Joplin", "ChatGPT"]),
     (["--title-enrichment-macos"], [])])
 def test_title_enrichment_config_and_cli(tmp_path, monkeypatch, override, expected):
     _patch_config_dir(monkeypatch, tmp_path)
@@ -194,6 +196,19 @@ def test_title_enrichment_config_and_cli(tmp_path, monkeypatch, override, expect
     )
     monkeypatch.setattr(sys, "argv", ["aw-watcher-window", *override])
     assert config_module.parse_args().title_enrichment_macos == expected
+
+
+@pytest.mark.parametrize("apps", [["ChatGPT"], ["Claude", "Joplin", "ChatGPT"]])
+def test_chatgpt_enrichment_config(tmp_path, monkeypatch, apps):
+    _patch_config_dir(monkeypatch, tmp_path)
+    monkeypatch.setattr(config_module, "load_config", lambda: {
+        "poll_time": 1.0, "exclude_title": False, "exclude_titles": [],
+        "strategy_macos": "swift", "title_enrichment_macos": apps,
+    })
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window"])
+    assert config_module.parse_args().title_enrichment_macos == apps
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window", "--title-enrichment-macos"])
+    assert config_module.parse_args().title_enrichment_macos == []
 
 
 @pytest.mark.parametrize("value", ['"Claude"', '["Unknown"]', 'true', '[42]'])

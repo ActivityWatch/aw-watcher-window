@@ -1,5 +1,32 @@
 # macOS title enrichment validation
 
+## ChatGPT extension (2026-10-05)
+
+The opt-in ChatGPT extractor targets the Electron app with bundle identifier
+`com.openai.codex`. Static inspection of the installed app established that its
+main renderer loads `app://-/index.html`, conversation views update the document
+title, and the native window suppresses page-title updates. The extractor requires
+one matching main document and reads only its title; it does not traverse web
+document contents. Other bundle identifiers and detached documents fall back.
+
+ChatGPT fixtures are synthetic. Live AX inspection was unavailable in the
+validation environment, so no end-to-end ChatGPT capture is claimed. The mapping
+from the renderer's document title to `AXWebArea`/`AXTitle`, chat switching, new
+chats, and embedded-page isolation still need the manual smoke test described in
+[the testing guide](macos-title-enrichment-testing.md). Source inspection and
+passing fixtures do not establish that the installed app exposes those fields.
+
+The validation source inspection used application resources only. No private
+chat storage, provider API, real chat titles, or proprietary source files are
+included in this contribution.
+
+The full automated suite passes: 106 pytest tests, including 209 production
+Swift checks, and mypy for 14 source files. Both arm64 and x86_64 compile targeting
+macOS 12.0; packaging and packaged `--help` pass. Five deliberate ChatGPT
+regressions are caught: disabling extraction, accepting another document origin,
+descending into web content, accepting duplicate documents, and accepting a
+document whose sibling cannot be identified.
+
 ## Review fixes (2026-10-05)
 
 The follow-up to PR #159 preserves native-title exclusions before enrichment,
@@ -10,7 +37,7 @@ remaining budget and reset afterward. Transport failures, late replies, or
 incomplete searches retain the native title. Pre-existing capture paths are
 outside this enrichment-specific time budget.
 
-The full suite passes: 100 pytest tests, including 135 production Swift checks,
+Before the ChatGPT extension, validation passed: 100 pytest tests, including 135 production Swift checks,
 and mypy for 14 source files. Both arm64 and x86_64 compile targeting macOS 12.0;
 local packaging and packaged `--help` pass. Deliberately removing the native
 exclusion guard, accepting duplicate fields, disabling the deadline, increasing

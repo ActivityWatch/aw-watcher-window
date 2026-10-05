@@ -18,7 +18,7 @@ production traversal, AX type conversion, opt-in checks, argument parser, and
 privacy filter are exercised directly. No alternative Python implementation of
 the extraction algorithm is used. No additional Swift package is required.
 
-The suite runs without installed Claude/Joplin apps, Accessibility permission,
+The suite runs without installed Claude/Joplin/ChatGPT apps, Accessibility permission,
 network access, or a running ActivityWatch server. Missing `swiftc` fails the test
 on macOS; other platforms skip it while retaining the Python configuration and
 command-forwarding tests. The existing macOS CI job already runs `make test`.
@@ -39,6 +39,10 @@ Injected child-count and child-copy responses exercise the production AX reader:
 after a positive count, failed, missing, truncated, or malformed child arrays
 must stop enrichment rather than let a partial search claim a unique title.
 Separate controls cover valid leaves and successful bounded child reads.
+ChatGPT uses synthetic document trees based on static inspection of its Electron
+app, not live AX captures. Tests cover the exact main-document location, unique
+document selection, no descent into web content, unsupported bundles, Unicode,
+blank and changing titles, malformed values, incomplete reads, and privacy gates.
 Do not commit raw AX dumps: they can include full conversations and note contents.
 
 ## Live smoke test
@@ -55,7 +59,8 @@ Run the candidate beside the normal watcher using a dedicated bucket. After
 ```sh
 ./aw_watcher_window/aw-watcher-window-macos \
   http://localhost:5600 aw-watcher-window_enrichment_TEST test-host test-client \
-  --title-enrichment-app Claude --title-enrichment-app Joplin
+  --title-enrichment-app Claude --title-enrichment-app Joplin \
+  --title-enrichment-app ChatGPT
 ```
 
 The candidate needs its own macOS Accessibility grant or an already authorized
@@ -64,7 +69,7 @@ for testing. Keep only the normal watcher writing to the normal bucket. Inspect
 the dedicated bucket in Raw Data, then stop the candidate with Ctrl-C.
 
 1. Compare the visible title with recorded events for Claude Chat, Cowork, Code,
-   and Joplin. Switch between two existing views without switching apps; allow
+   Joplin, and ChatGPT. Switch between two existing views without switching apps; allow
    one 10-second poll. Verify new/unnamed views do not inherit the previous name.
 2. Repeat with sidebar open/closed, no document open, search/find controls,
    app restart, and rapid app switching. Unknown/localized layouts should keep
@@ -80,10 +85,16 @@ the dedicated bucket in Raw Data, then stop the candidate with Ctrl-C.
    crashes, generic-title fallbacks, and app updates. A 48–72 hour run is a
    suggested validation period, not an upstream-mandated requirement.
 
+For ChatGPT, verify two titled conversations, a new chat, and an embedded page
+with an unrelated title. Record whether the main window exposes an `AXWebArea`
+with URL `app://-/index.html` and the active conversation in `AXTitle`. Only the
+Electron app with bundle ID `com.openai.codex` is supported. This mapping still
+requires live confirmation; tests of synthetic trees cannot establish it.
+
 ## Interpreting an update
 
 CI detects regressions against committed fixtures. It does not observe future
-Claude/Joplin releases. Repeat the live smoke test when those apps update and
+Claude/Joplin/ChatGPT releases. Repeat the live smoke test when those apps update and
 add a sanitized regression fixture for any changed structure before changing a
 selector. Generic titles can also be legitimate, so fallback frequency is a
 diagnostic signal, not proof of failure.
