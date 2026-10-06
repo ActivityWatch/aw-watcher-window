@@ -54,6 +54,18 @@ class TestIsBrowser(unittest.TestCase):
         swift_browser_apps = set(re.findall(r'"([^"]+)"', match.group("entries")))
         self.assertEqual(swift_browser_apps, BROWSER_APPS)
 
+    def test_url_capturing_macos_browsers_are_research_browsers(self):
+        # The macOS helper extracts URLs for these apps; if the research filter
+        # does not treat them as browsers, their pages are never classified.
+        swift = (Path(__file__).parents[1] / "aw_watcher_window" / "macos.swift").read_text()
+        for name in ("CHROME_BROWSERS", "FIREFOX_BROWSERS"):
+            match = re.search(
+                rf"let\s+{name}\s*=\s*\[(?P<entries>.*?)\]", swift, re.DOTALL
+            )
+            self.assertIsNotNone(match, name)
+            for app in re.findall(r'"([^"]+)"', match.group("entries")):
+                self.assertTrue(is_browser(app), f"{name} entry {app!r}")
+
 
 class TestClassifyTitle(unittest.TestCase):
     CATEGORY_MAP = {
