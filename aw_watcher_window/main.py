@@ -95,6 +95,37 @@ def swift_helper_exit_status(returncode):
     return returncode
 
 
+def _is_xconn_error(exc: BaseException) -> bool:
+    """Return True if *exc* is an Xlib display-connection or authorisation error."""
+    try:
+        import Xlib.error
+
+        return isinstance(exc, Xlib.error.DisplayConnectionError)
+    except ImportError:
+        return False
+
+
+def _warn_wayland_once() -> None:
+    """Log a one-time warning when a Wayland session is detected.
+
+    X11 tracking (via Xlib) only sees XWayland apps; native Wayland windows
+    appear as 'unknown'. Users running a pure Wayland compositor should switch
+    to aw-watcher-window-wayland instead.
+    """
+    xdg_session = os.environ.get("XDG_SESSION_TYPE", "").lower()
+    wayland_display = os.environ.get("WAYLAND_DISPLAY", "")
+    if xdg_session == "wayland" or wayland_display:
+        logger.warning(
+            "Wayland session detected (XDG_SESSION_TYPE=%r, WAYLAND_DISPLAY=%r). "
+            "aw-watcher-window uses X11/Xlib and will only track XWayland apps — "
+            "native Wayland windows will show as 'unknown'. "
+            "For full Wayland support see aw-watcher-window-wayland: "
+            "https://github.com/ActivityWatch/aw-watcher-window-wayland",
+            xdg_session or "unset",
+            wayland_display or "unset",
+        )
+
+
 def try_compile_title_regex(title):
     try:
         return re.compile(title, re.IGNORECASE)
@@ -115,11 +146,6 @@ def main():
 
     args = parse_args()
 
-    if sys.platform.startswith("linux") and (
-        "DISPLAY" not in os.environ or not os.environ["DISPLAY"]
-    ):
-        raise Exception("DISPLAY environment variable not set")
-
     setup_logging(
         name="aw-watcher-window",
         testing=args.testing,
@@ -127,6 +153,18 @@ def main():
         log_stderr=True,
         log_file=True,
     )
+
+    if sys.platform.startswith("linux"):
+        # Warn about Wayland *before* the DISPLAY check so pure-Wayland users
+        # (no DISPLAY set) still see the actionable message and the link to
+        # aw-watcher-window-wayland instead of a bare exception.
+        _warn_wayland_once()
+
+    if sys.platform.startswith("linux") and (
+        "DISPLAY" not in os.environ or not os.environ["DISPLAY"]
+    ):
+        raise Exception("DISPLAY environment variable not set")
+
     if sys.platform == "darwin":
         background_ensure_permissions()
 
@@ -209,6 +247,10 @@ def heartbeat_loop(
     research_category_map=None,
     research_app_category_map=None,
 ):
+    # State for X display-connection error backoff (Linux only).
+    _xconn_error_logged = False
+    _xconn_backoff = poll_time  # grows exponentially up to 60s on repeated failures
+
     while True:
         if os.getppid() == 1:
             logger.info("window-watcher stopped because parent process died")
@@ -218,6 +260,10 @@ def heartbeat_loop(
         try:
             current_window = get_current_window(strategy)
             logger.debug(current_window)
+            # Reset backoff and the one-shot log flag on a successful poll so
+            # a new X connection failure episode logs once again.
+            _xconn_backoff = poll_time
+            _xconn_error_logged = False
         except (FatalError, OSError):
             # Fatal exceptions should quit the program
             try:
@@ -225,7 +271,35 @@ def heartbeat_loop(
             except OSError:
                 pass
             break
-        except Exception:
+        except Exception as exc:
+            # Check for X display connection / authorisation failures before
+            # falling through to the generic "log full traceback" path.
+            if sys.platform.startswith("linux") and _is_xconn_error(exc):
+                if not _xconn_error_logged:
+                    _xconn_error_logged = True
+                    _xauth = os.environ.get("XAUTHORITY", "")
+                    logger.error(
+                        "Cannot connect to X display: %s. "
+                        "Most likely cause: aw-watcher-window is running as a different user "
+                        "or with sudo. Fix: run it as the display owner, or point XAUTHORITY "
+                        "to the correct .Xauthority file (currently %r). "
+                        "See: https://docs.activitywatch.net/en/latest/faq.html",
+                        exc,
+                        _xauth if _xauth else "unset",
+                    )
+                # Sleep in 1-second chunks so parent death is noticed within
+                # ~1 s even when the backoff is at its 60 s cap.
+                _remaining = _xconn_backoff
+                while _remaining > 0:
+                    sleep(min(1.0, _remaining))
+                    _remaining -= 1.0
+                    if os.getppid() == 1:
+                        logger.info("window-watcher stopped because parent process died")
+                        break
+                else:
+                    _xconn_backoff = min(_xconn_backoff * 2, 60.0)
+                    continue
+                break
             # Non-fatal exceptions should be logged
             try:
                 # If stdout has been closed, this exception-print can cause (I think)
