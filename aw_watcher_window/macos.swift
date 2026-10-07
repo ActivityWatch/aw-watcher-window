@@ -751,10 +751,14 @@ class MainThing {
 
     // App exclusion is a privacy guarantee and must run before any browser
     // processing: an excluded app must neither produce a heartbeat nor surface
-    // its title/URL in logs, and incognito Chrome clears the app name to ""
-    // before the later check would see it. Dropping the pending heartbeat keeps
-    // the excluded interval a gap — otherwise the next heartbeat's elapsed-time
-    // pulse would refresh the preceding app's event across the gap.
+    // its title/URL in logs. The check sees the real app name (localizedName,
+    // falling back to bundleIdentifier) — the later incognito branch clears it
+    // only after this point, so patterns match e.g. "Google Chrome", not "".
+    // Note: localizedName is localized, so a pattern written for another
+    // platform's raw app name may not match here. Dropping the pending
+    // heartbeat keeps the excluded interval a gap — otherwise the next
+    // heartbeat's elapsed-time pulse would refresh the preceding app's event
+    // across the gap.
     if appShouldBeExcluded(applicationName) {
       // Drop pending heartbeats and force the next send to break the merge
       // chain, so no in-flight or queued heartbeat bridges the excluded gap.

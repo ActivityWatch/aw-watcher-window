@@ -375,8 +375,17 @@ def heartbeat_loop(
             # interval is never stretched further).
             if _error_repeats > 1:
                 extra = min(poll_time * 2 ** min(_error_repeats, 10), 60.0) - poll_time
-                if extra > 0:
-                    sleep(extra)
+                # Sleep in 1-second chunks (matching the X-connection backoff
+                # above) so parent death is noticed within ~1 s even at the
+                # 60 s cap, instead of leaving an orphaned watcher idle for
+                # up to a minute.
+                while extra > 0 and os.getppid() != 1:
+                    chunk = min(1.0, extra)
+                    sleep(chunk)
+                    extra -= chunk
+                if os.getppid() == 1:
+                    logger.info("window-watcher stopped because parent process died")
+                    break
 
         if current_window is None:
             logger.debug("Unable to fetch window, trying again on next poll")
