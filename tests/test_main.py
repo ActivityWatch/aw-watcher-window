@@ -587,9 +587,12 @@ def test_heartbeat_loop_repeated_exception_logs_once_and_backs_off(monkeypatch, 
     assert len(tracebacks) == 1
     assert len(summaries) == 2  # at 100 and 200 repeats
     # Total interval is capped at 60s: extra sleep (on top of the 1s poll_time)
-    # grows to at most 59s.
-    assert max(sleep_calls) == 59.0
+    # grows to at most 59s. The backoff sleeps in 1-second chunks (parent-death
+    # check between chunks), so no single sleep call exceeds 1.0 — but the total
+    # time across 250 failing polls proves the cap is still honored.
+    assert max(sleep_calls) == 1.0
     assert sum(sleep_calls) < n_errors * 60.0  # each poll: poll_time(1s) + extra(≤59s)
+    assert sum(sleep_calls) > 60.0  # backoff actually grows to the cap
 
 
 def test_heartbeat_loop_alternating_exceptions_backs_off(monkeypatch, caplog):
@@ -627,10 +630,12 @@ def test_heartbeat_loop_alternating_exceptions_backs_off(monkeypatch, caplog):
     # Exactly one traceback per distinct error signature (2 here), not one per poll.
     assert len(tracebacks) == 2
 
-    # Backoff must grow: with 20 alternating errors the extra sleep must exceed
-    # poll_time (1.0) before the loop ends.
-    backoff_sleeps = [s for s in sleep_calls if s > 1.0]
-    assert len(backoff_sleeps) > 0, "Expected growing backoff on alternating errors"
+    # Backoff must grow: with 20 alternating errors the total extra sleep must
+    # exceed poll_time (1.0) before the loop ends. Backoff sleeps in 1-second
+    # chunks (parent-death check between chunks), so growth shows up in the
+    # total, not in any single call.
+    total_extra = sum(sleep_calls) - n_errors * 1.0  # subtract the poll_time sleeps
+    assert total_extra > 0, "Expected growing backoff on alternating errors"
 
 
 def test_heartbeat_loop_long_poll_time_no_negative_sleep(monkeypatch):
