@@ -286,3 +286,20 @@ def test_exclude_apps_list_in_config_is_preserved(monkeypatch):
     args = config_module.parse_args()
 
     assert args.exclude_apps == ["1Password", "KeePassXC"]
+
+
+@pytest.mark.parametrize("value", ["17", "true", "{pattern = 'Secret'}", '["Secret", 17]'])
+def test_invalid_exclude_apps_config_errors(tmp_path, monkeypatch, capsys, value):
+    _patch_config_dir(monkeypatch, tmp_path)
+    config_dir = tmp_path / "activitywatch" / "aw-watcher-window"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "aw-watcher-window.toml").write_text(
+        f"[aw-watcher-window]\nexclude_apps = {value}\n"
+    )
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window"])
+
+    with pytest.raises(SystemExit) as exc:
+        config_module.parse_args()
+
+    assert exc.value.code == 2
+    assert "exclude_apps must be a string or a list of strings" in capsys.readouterr().err
