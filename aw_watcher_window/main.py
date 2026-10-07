@@ -269,6 +269,12 @@ def heartbeat_loop(
     # persistent error can't write an unbounded log (aw-watcher-window#78).
     _seen_errors: set = set()  # error signatures seen in the current failure streak
     _error_repeats = 0
+    # Set when a poll was suppressed by exclude_apps; the next sent heartbeat
+    # then uses pulsetime=0 so the server cannot merge it into the event that
+    # preceded the excluded interval. Without this, a visit to an excluded app
+    # shorter than compute_pulsetime(poll_time) is attributed to the preceding
+    # app — a privacy leak (aw-watcher-window#156 review).
+    _chain_broken_by_exclusion = False
 
     while True:
         if os.getppid() == 1:
@@ -385,20 +391,30 @@ def heartbeat_loop(
             )
 
             if current_window is None:
-                # Skip without closing the previous event: an excluded app must
-                # leave a gap, not a sentinel/empty heartbeat (which would
-                # itself be logged). The server only extends the previous event
-                # within pulsetime, so the excluded interval is not attributed
-                # to it.
+                # Skip without emitting a sentinel/empty heartbeat (which would
+                # itself be logged). Instead, mark the chain broken: the next
+                # sent heartbeat uses pulsetime=0 so the server cannot extend
+                # the preceding event across the excluded interval (a visit
+                # shorter than compute_pulsetime(poll_time) would otherwise be
+                # attributed to the preceding app).
                 logger.debug("Window excluded by exclude_apps, skipping heartbeat")
+                _chain_broken_by_exclusion = True
             else:
                 now = datetime.now(timezone.utc)
                 current_window_event = Event(timestamp=now, data=current_window)
 
+                if _chain_broken_by_exclusion:
+                    # First heartbeat after an exclusion: never merge it into
+                    # the pre-exclusion event, even if the data matches.
+                    pulsetime = 0.0
+                    _chain_broken_by_exclusion = False
+                else:
+                    pulsetime = compute_pulsetime(poll_time)
+
                 client.heartbeat(
                     bucket_id,
                     current_window_event,
-                    pulsetime=compute_pulsetime(poll_time),
+                    pulsetime=pulsetime,
                     queued=True,
                 )
 
