@@ -202,6 +202,11 @@ var oldHeartbeat: Heartbeat?
 // still in flight at that moment captures the generation it started under, so
 // its completion cannot resurrect the heartbeat that was just cleared.
 var heartbeatGeneration = 0
+// Set when an excluded app cleared the pending heartbeat; the next sent
+// heartbeat then uses pulsetime 0 so aw-server cannot merge it into the event
+// that preceded the excluded interval (a sub-second visit would otherwise be
+// attributed to the preceding app).
+var heartbeatPulseBreak = false
 
 let encoder = JSONEncoder()
 let formatter = ISO8601DateFormatter()
@@ -464,6 +469,11 @@ func sendHeartbeat(_ heartbeat: Heartbeat) {
     return
   }
 
+  // Consume the exclusion pulse-break after the gap check, so a skipped send
+  // does not lose it.
+  let pulseBreak = heartbeatPulseBreak
+  heartbeatPulseBreak = false
+
   // TODO running these async could cause weird state issues since the observer stuff can send a log of heartbeats
   //      in a short time under certain circumstances, and we don't want to send them all
   Task {
@@ -493,7 +503,9 @@ func sendHeartbeat(_ heartbeat: Heartbeat) {
 
     do {
       let since_last_seconds = previousHeartbeat != nil ? heartbeat.timestamp.timeIntervalSince(previousHeartbeat!.timestamp) : 0
-      try await sendHeartbeatSingle(heartbeat, pulsetime: since_last_seconds + 1)
+      // First heartbeat after an exclusion: never merge it into the
+      // pre-exclusion event, even if the data matches.
+      try await sendHeartbeatSingle(heartbeat, pulsetime: pulseBreak ? 0 : since_last_seconds + 1)
     } catch {
       log("Failed to send heartbeat: \(error)")
       return
@@ -641,15 +653,20 @@ class MainThing {
 
     // App exclusion is a privacy guarantee and must run before any browser
     // processing: an excluded app must neither produce a heartbeat nor surface
-    // its title/URL in logs, and incognito Chrome clears the app name to ""
-    // before the later check would see it. Dropping oldHeartbeat keeps the
-    // excluded interval a gap — otherwise the next heartbeat's elapsed-time
-    // pulse would refresh the preceding app's event across the gap.
+    // its title/URL in logs. The check sees the real app name (localizedName,
+    // falling back to bundleIdentifier) — the later incognito branch clears it
+    // only after this point, so patterns match e.g. "Google Chrome", not "".
+    // Note: localizedName is localized, so a pattern written for another
+    // platform's raw app name may not match here. Dropping oldHeartbeat
+    // restarts the elapsed-time pulse, so the next heartbeat carries a small
+    // pulsetime and the excluded interval stays out of the preceding app's
+    // event.
     if appShouldBeExcluded(applicationName) {
       // Invalidate any in-flight send so its completion cannot resurrect the
       // heartbeat cleared here.
       heartbeatGeneration += 1
       oldHeartbeat = nil
+      heartbeatPulseBreak = true
       return
     }
 

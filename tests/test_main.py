@@ -306,10 +306,12 @@ def test_try_compile_regex_exits_on_invalid_pattern():
 def _run_heartbeat_loop(monkeypatch, windows, **kwargs):
     """Drive heartbeat_loop over a fixed window sequence, then stop it."""
     heartbeats = []
+    pulsetimes = []
 
     class FakeClient:
         def heartbeat(self, *args, **kw):
             heartbeats.append(args[1])
+            pulsetimes.append(kw.get("pulsetime"))
 
     pending = list(windows)
 
@@ -324,11 +326,11 @@ def _run_heartbeat_loop(monkeypatch, windows, **kwargs):
     main_module.heartbeat_loop(
         FakeClient(), "bucket", poll_time=1.0, strategy="swift", **kwargs
     )
-    return heartbeats
+    return heartbeats, pulsetimes
 
 
 def test_heartbeat_loop_skips_heartbeat_for_excluded_app(monkeypatch):
-    heartbeats = _run_heartbeat_loop(
+    heartbeats, _ = _run_heartbeat_loop(
         monkeypatch,
         [{"app": "1Password", "title": "Vault"}],
         exclude_apps=[re.compile("1Password", re.IGNORECASE)],
@@ -338,7 +340,7 @@ def test_heartbeat_loop_skips_heartbeat_for_excluded_app(monkeypatch):
 
 
 def test_heartbeat_loop_sends_heartbeat_for_logged_app(monkeypatch):
-    heartbeats = _run_heartbeat_loop(
+    heartbeats, pulsetimes = _run_heartbeat_loop(
         monkeypatch,
         [{"app": "Chrome", "title": "Some page"}],
         exclude_apps=[re.compile("1Password", re.IGNORECASE)],
@@ -346,6 +348,7 @@ def test_heartbeat_loop_sends_heartbeat_for_logged_app(monkeypatch):
 
     assert len(heartbeats) == 1
     assert heartbeats[0].data == {"app": "Chrome", "title": "Some page"}
+    assert pulsetimes == [main_module.compute_pulsetime(1.0)]
 
 
 def test_heartbeat_loop_excluded_app_between_allowed_windows(monkeypatch):
@@ -355,13 +358,15 @@ def test_heartbeat_loop_excluded_app_between_allowed_windows(monkeypatch):
     no heartbeat, and the loop keeps processing the allowed windows on either
     side (it does not stall or leak the suppressed window's data).
     """
-    heartbeats = _run_heartbeat_loop(
+    heartbeats, pulsetimes = _run_heartbeat_loop(
         monkeypatch,
         [
             {"app": "Editor", "title": "file.py"},
             # The excluded window's title carries its app name too, so a
             # bypassed exclusion is caught by the title assertion below (with a
-            # plain title like "Vault" that assertion could never fail).
+            # plain title like "Vault" that assertion could never fail). The
+            # app-name assertion catches it too: a leaked heartbeat would make
+            # the app list ["Editor", "1Password", "Editor"].
             {"app": "1Password", "title": "1Password — Vault"},
             {"app": "Editor", "title": "file.py"},
         ],
@@ -370,6 +375,11 @@ def test_heartbeat_loop_excluded_app_between_allowed_windows(monkeypatch):
 
     assert [hb.data["app"] for hb in heartbeats] == ["Editor", "Editor"]
     assert all("1Password" not in hb.data.get("title", "") for hb in heartbeats)
+    # The first heartbeat is a fresh chain (compute_pulsetime). After the
+    # excluded window, the next heartbeat must use pulsetime=0 so the server
+    # cannot merge it into the pre-exclusion Editor event — otherwise a visit
+    # shorter than compute_pulsetime(poll_time) is attributed to the Editor.
+    assert pulsetimes == [main_module.compute_pulsetime(1.0), 0.0]
 
 
 @pytest.mark.parametrize(
