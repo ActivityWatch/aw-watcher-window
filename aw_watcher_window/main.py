@@ -96,11 +96,13 @@ def main():
             if args.research_enabled
             else None
         )
-        privacy_filter_rules = compile_privacy_rules(
-            getattr(args, "privacy_filter_rules", [])
-        )
+        raw_privacy_filter_rules = getattr(args, "privacy_filter_rules", [])
+        privacy_filter_rules = compile_privacy_rules(raw_privacy_filter_rules)
         if sys.platform == "darwin" and args.strategy == "swift":
-            if privacy_filter_rules:
+            # Gate on the *configured* rules, not the compiled subset: if every
+            # rule was invalid there are no compiled rules, but the user still
+            # intends privacy filtering and must not silently leak under swift.
+            if raw_privacy_filter_rules:
                 logger.error(
                     "privacy_filter is configured, but the macOS swift strategy "
                     "sends heartbeats from a separate binary and cannot apply "

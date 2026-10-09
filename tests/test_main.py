@@ -304,6 +304,76 @@ def test_swift_refuses_to_start_when_privacy_filter_configured(monkeypatch):
     assert commands == []
 
 
+def test_swift_refuses_to_start_when_configured_rules_are_all_invalid(monkeypatch):
+    """Fail-closed even when every configured rule fails to compile.
+
+    Regression: gating on the compiled list let a typo'd regex silently start
+    the swift strategy and leak titles on the default macOS setup.
+    """
+    commands = []
+
+    class FakeProcess:
+        pid = 123
+
+        def wait(self):
+            return None
+
+    class FakeClient:
+        client_name = "aw-watcher-window"
+        client_hostname = "host.localdomain"
+        server_address = "http://localhost:5600"
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def create_bucket(self, *args, **kwargs):
+            pass
+
+        def wait_for_start(self):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(main_module.sys, "platform", "darwin")
+    monkeypatch.setattr(main_module, "background_ensure_permissions", lambda: None)
+    monkeypatch.setattr(main_module, "setup_logging", lambda **kwargs: None)
+    monkeypatch.setattr(main_module, "ActivityWatchClient", FakeClient)
+    monkeypatch.setattr(main_module.signal, "signal", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        main_module.subprocess,
+        "Popen",
+        lambda command: commands.append(command) or FakeProcess(),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "parse_args",
+        lambda: SimpleNamespace(
+            testing=True,
+            verbose=False,
+            host=None,
+            port=None,
+            strategy="swift",
+            exclude_title=False,
+            exclude_titles=[],
+            research_enabled=False,
+            research_category_map={},
+            research_app_category_map={},
+            # A configured rule whose regex does not compile to anything.
+            privacy_filter_rules=[{"pattern": "(unclosed", "action": "drop"}],
+        ),
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        main_module.main()
+
+    assert excinfo.value.code == 1
+    assert commands == []
+
+
 @pytest.mark.parametrize(
     "poll_time,expected_pulsetime",
     [
