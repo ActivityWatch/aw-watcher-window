@@ -27,7 +27,7 @@ Rule fields:
 
 macOS note: the default ``swift`` strategy cannot apply these rules (it
 sends heartbeats from a separate binary). The watcher refuses to start
-under ``--strategy swift`` when any rule compiled, so titles are not
+under ``--strategy swift`` when any rule is configured, so titles are not
 leaked. Use ``--strategy jxa`` or ``--strategy applescript`` on macOS.
 """
 
