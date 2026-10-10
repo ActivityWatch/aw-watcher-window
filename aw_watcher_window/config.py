@@ -11,6 +11,7 @@ default_config = """
 [aw-watcher-window]
 exclude_title = false
 exclude_titles = []
+exclude_apps = []
 poll_time = 1.0
 strategy_macos = "swift"
 """.strip()
@@ -44,6 +45,14 @@ def parse_args():
     default_poll_time = config["poll_time"]
     default_exclude_title = config["exclude_title"]
     default_exclude_titles = config["exclude_titles"]
+    # .get() for backward compatibility: configs loaded from older dicts (and
+    # tests that mock load_config) may predate this key.
+    default_exclude_apps = config.get("exclude_apps", [])
+    # `exclude_apps = "1Password"` is natural TOML for a single app, but
+    # `nargs='+'` would pass the string through as-is and main.py would then
+    # iterate it character-by-character, never matching the intended pattern.
+    if isinstance(default_exclude_apps, str):
+        default_exclude_apps = [default_exclude_apps]
     default_strategy_macos = config["strategy_macos"]
     default_research_enabled = config.get("research_enabled", False)
 
@@ -65,6 +74,13 @@ def parse_args():
         nargs='+',
         default=default_exclude_titles,
         help="Exclude window titles by regular expression. Can specify multiple times."
+    )
+    parser.add_argument(
+        "--exclude-apps",
+        dest="exclude_apps",
+        nargs='+',
+        default=default_exclude_apps,
+        help="Exclude apps/window classes by regular expression — matching windows are not logged at all."
     )
     parser.add_argument("--verbose", dest="verbose", action="store_true")
     parser.add_argument(
@@ -98,6 +114,12 @@ def parse_args():
         isinstance(title, str) for title in parsed_args.exclude_titles
     ):
         parser.error("exclude_titles must be a string or a list of strings")
+    if isinstance(parsed_args.exclude_apps, str):
+        parsed_args.exclude_apps = [parsed_args.exclude_apps]
+    elif not isinstance(parsed_args.exclude_apps, list) or not all(
+        isinstance(app, str) for app in parsed_args.exclude_apps
+    ):
+        parser.error("exclude_apps must be a string or a list of strings")
     parsed_args.research_category_map = dict(config.get("research_category_map", {}))
     parsed_args.research_app_category_map = dict(config.get("research_app_category_map", {}))
     return parsed_args
