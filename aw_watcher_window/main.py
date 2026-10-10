@@ -15,6 +15,7 @@ from aw_core.models import Event
 from .config import parse_args
 from .exceptions import FatalError
 from .lib import get_current_window
+from .privacy_filter import apply_privacy_filters, compile_privacy_rules
 from .research_filter import transform as research_transform
 from .macos_cli import build_swift_command
 from .macos_permissions import background_ensure_permissions
@@ -195,7 +196,20 @@ def main():
         research_app_category_map = (
             args.research_app_category_map if args.research_enabled else None
         )
+        raw_privacy_filter_rules = getattr(args, "privacy_filter_rules", [])
+        privacy_filter_rules = compile_privacy_rules(raw_privacy_filter_rules)
         if sys.platform == "darwin" and args.strategy == "swift":
+            # Gate on the *configured* rules, not the compiled subset: if every
+            # rule was invalid there are no compiled rules, but the user still
+            # intends privacy filtering and must not silently leak under swift.
+            if raw_privacy_filter_rules:
+                logger.error(
+                    "privacy_filter is configured, but the macOS swift strategy "
+                    "sends heartbeats from a separate binary and cannot apply "
+                    "those rules. Refusing to start so window titles are not "
+                    "leaked. Use --strategy jxa or --strategy applescript."
+                )
+                sys.exit(1)
             logger.info("Using swift strategy, calling out to swift binary")
             binpath = os.path.join(
                 os.path.dirname(os.path.realpath(__file__)), "aw-watcher-window-macos"
@@ -238,6 +252,7 @@ def main():
                 ],
                 research_category_map=research_category_map,
                 research_app_category_map=research_app_category_map,
+                privacy_filter_rules=privacy_filter_rules,
             )
 
 
@@ -250,6 +265,7 @@ def heartbeat_loop(
     exclude_titles=[],
     research_category_map=None,
     research_app_category_map=None,
+    privacy_filter_rules=None,
 ):
     # State for X display-connection error backoff (Linux only).
     _xconn_error_logged = False
@@ -370,17 +386,21 @@ def heartbeat_loop(
                 exclude_titles=exclude_titles,
                 research_category_map=research_category_map,
                 research_app_category_map=research_app_category_map,
+                privacy_filter_rules=privacy_filter_rules,
             )
 
-            now = datetime.now(timezone.utc)
-            current_window_event = Event(timestamp=now, data=current_window)
+            if current_window is None:
+                logger.debug("Event dropped by privacy filter, skipping heartbeat")
+            else:
+                now = datetime.now(timezone.utc)
+                current_window_event = Event(timestamp=now, data=current_window)
 
-            client.heartbeat(
-                bucket_id,
-                current_window_event,
-                pulsetime=compute_pulsetime(poll_time),
-                queued=True,
-            )
+                client.heartbeat(
+                    bucket_id,
+                    current_window_event,
+                    pulsetime=compute_pulsetime(poll_time),
+                    queued=True,
+                )
 
         sleep(poll_time)
 
@@ -391,7 +411,14 @@ def transform_window(
     exclude_titles=None,
     research_category_map=None,
     research_app_category_map=None,
+    privacy_filter_rules=None,
 ):
+    # Privacy filter runs first — sensitive events never reach other transforms
+    if privacy_filter_rules:
+        current_window = apply_privacy_filters(current_window, privacy_filter_rules)
+        if current_window is None:
+            return None
+
     if research_category_map is not None:
         return research_transform(
             current_window,
