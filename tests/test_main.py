@@ -37,7 +37,7 @@ def test_research_mode_passes_map_to_macos_swift_strategy(monkeypatch):
             return False
 
     monkeypatch.setattr(main_module.sys, "platform", "darwin")
-    monkeypatch.setattr(main_module, "background_ensure_permissions", lambda: None)
+    monkeypatch.setattr(main_module, "background_ensure_permissions", lambda *args, **kwargs: None)
     monkeypatch.setattr(main_module, "setup_logging", lambda **kwargs: None)
     monkeypatch.setattr(main_module, "ActivityWatchClient", FakeClient)
     monkeypatch.setattr(main_module.signal, "signal", lambda *args, **kwargs: None)
@@ -261,7 +261,7 @@ def test_swift_strategy_propagates_helper_crash(monkeypatch):
             return False
 
     monkeypatch.setattr(main_module.sys, "platform", "darwin")
-    monkeypatch.setattr(main_module, "background_ensure_permissions", lambda: None)
+    monkeypatch.setattr(main_module, "background_ensure_permissions", lambda *args, **kwargs: None)
     monkeypatch.setattr(main_module, "setup_logging", lambda **kwargs: None)
     monkeypatch.setattr(main_module, "ActivityWatchClient", FakeClient)
     monkeypatch.setattr(main_module.signal, "signal", lambda *args, **kwargs: None)
