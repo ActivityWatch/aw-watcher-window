@@ -196,7 +196,6 @@ let researchBrowserApps = Set([
 ])
 
 let main = MainThing()
-var oldHeartbeat: Heartbeat?
 
 let encoder = JSONEncoder()
 let formatter = ISO8601DateFormatter()
@@ -390,7 +389,8 @@ func start() {
     return
   }
 
-  createBucket()
+  // The bucket is created by the heartbeat sender before its first send, and
+  // retried with the heartbeats if the server is not up yet.
 
   // listen for changes in focused application
   NSWorkspace.shared.notificationCenter.addObserver(
@@ -407,71 +407,121 @@ func start() {
 }
 
 // TODO might be better to have the python wrapper create this before launching the swift application
-func createBucket() {
+func createBucket() async throws {
   let payload = try! encoder.encode(
     Bucket(client: clientName, type: "currentwindow", hostname: clientHostname))
 
   let url = URL(string: "\(baseurl)/api/0/buckets/\(bucketName)")!
-  Task {
-    var urlRequest = URLRequest(url: url)
-    urlRequest.httpMethod = "POST"
-    urlRequest.addValue("application/json", forHTTPHeaderField: "Content-Type")
-    let (_, response) = try await URLSession.shared.upload(for: urlRequest, from: payload)
-    guard (200...299).contains((response as! HTTPURLResponse).statusCode) else {
-      log("Failed to create bucket")
-      return
-    }
+  var urlRequest = URLRequest(url: url)
+  urlRequest.httpMethod = "POST"
+  urlRequest.addValue("application/json", forHTTPHeaderField: "Content-Type")
+  let (_, response) = try await URLSession.shared.upload(for: urlRequest, from: payload)
+  let status = (response as! HTTPURLResponse).statusCode
+  // 304: the bucket already exists
+  guard (200...299).contains(status) || status == 304 else {
+    throw HeartbeatError.error(msg: "Failed to create bucket: \(response)")
   }
 }
 
-func sendHeartbeat(_ heartbeat: Heartbeat) {
-  let oldPayloadDifferent = oldHeartbeat != nil && oldHeartbeat!.data != heartbeat.data
-  let timeSinceLastHeartbeat = oldHeartbeat != nil ? heartbeat.timestamp.timeIntervalSince(oldHeartbeat!.timestamp) : -1.0
+/// Delivers heartbeats one at a time, in order, and keeps them when the
+/// server is slow or not up yet (ActivityWatch/aw-watcher-window#160).
+///
+/// Before this, every poll and focus change spawned its own Task: when the
+/// server stalled they piled up in parallel (six in flight were observed) and
+/// a failed heartbeat was dropped, so the time until the next successful
+/// send was credited to whatever window happened to be sent next. Now a
+/// failed heartbeat stays at the head of the queue and is retried with
+/// backoff; pulsetimes are computed at send time, relative to the last
+/// heartbeat the server accepted, so the server-side merge still covers the
+/// gap. Heartbeats collected while the server is unreachable (e.g. the
+/// watcher starting before the server at login) are delivered when it comes
+/// back, in order.
+actor HeartbeatSender {
+  /// Oldest heartbeats are dropped past this; ~28 h at one per 10 s.
+  static let maxQueued = 10_000
+  static let maxRetryDelay: TimeInterval = 60
 
-  // if you resize a window a ton of events (subsecond) will be fired
-  // we enforce a 1s minimum gap between events to avoid this
-  if timeSinceLastHeartbeat != -1.0 && timeSinceLastHeartbeat <= 0.5 {
-    debug("skipping heartbeat, last heartbeat was sent 1s ago")
-    return
-  }
+  private var queue: [Heartbeat] = []
+  private var draining = false
+  /// Last heartbeat the server accepted; pulsetimes are relative to it.
+  private var lastSent: Heartbeat?
+  /// Last heartbeat enqueued, for the sub-second dedupe below.
+  private var lastEnqueued: Heartbeat?
+  private var retryDelay: TimeInterval = 1
+  private var droppedSinceLastLog = 0
+  private var bucketReady = false
 
-  // TODO running these async could cause weird state issues since the observer stuff can send a log of heartbeats
-  //      in a short time under certain circumstances, and we don't want to send them all
-  Task {
-    if oldPayloadDifferent {
-      debug("sending old heartbeat for merging")
-
-      do {
-        // unlike the python aw-client library, we do not enforce a `commit_interval` and instead send the old event (which is not invalid)
-        // at the current time with a pulse value equal to the time since this event was originally sent. The aw-server will then merge
-        // this new event with the original event, extending the recorded time spent on this particular window/application.
-
-        let refreshedOldHeartbeat = Heartbeat(
-          // it is important to refresh the hearbeat using the timestamp where the user stopped working on the previous application
-          // more info: https://github.com/ActivityWatch/aw-watcher-window/pull/69
-          // we don't *think* this millisecond subtraction is necessary, but it may be:
-          // https://github.com/ActivityWatch/aw-watcher-window/pull/69#discussion_r987064282
-          timestamp: heartbeat.timestamp - 0.001,
-          data: oldHeartbeat!.data
-        )
-
-        try await sendHeartbeatSingle(refreshedOldHeartbeat, pulsetime: timeSinceLastHeartbeat + 1)
-      } catch {
-        log("Failed to send old heartbeat: \(error)")
-        return
-      }
-    }
-
-    do {
-      let since_last_seconds = oldHeartbeat != nil ? heartbeat.timestamp.timeIntervalSince(oldHeartbeat!.timestamp) : 0
-      try await sendHeartbeatSingle(heartbeat, pulsetime: since_last_seconds + 1)
-    } catch {
-      log("Failed to send heartbeat: \(error)")
+  func enqueue(_ heartbeat: Heartbeat) {
+    // if you resize a window a ton of events (subsecond) will be fired
+    // we enforce a 1s minimum gap between events to avoid this
+    if let last = lastEnqueued, heartbeat.timestamp.timeIntervalSince(last.timestamp) <= 0.5 {
+      debug("skipping heartbeat, last heartbeat was sent 1s ago")
       return
     }
+    lastEnqueued = heartbeat
 
-    oldHeartbeat = heartbeat
+    if queue.count >= Self.maxQueued {
+      queue.removeFirst()
+      droppedSinceLastLog += 1
+    }
+    queue.append(heartbeat)
+
+    if !draining {
+      draining = true
+      Task { await self.drain() }
+    }
   }
+
+  private func drain() async {
+    while let next = queue.first {
+      do {
+        if !bucketReady {
+          try await createBucket()
+          bucketReady = true
+        }
+        try await send(next)
+        queue.removeFirst()
+        retryDelay = 1
+      } catch {
+        if droppedSinceLastLog > 0 {
+          log("Dropped \(droppedSinceLastLog) oldest queued heartbeats (queue limit \(Self.maxQueued))")
+          droppedSinceLastLog = 0
+        }
+        log("Failed to send heartbeat (\(queue.count) queued), retrying in \(Int(retryDelay))s: \(error.localizedDescription)")
+        try? await Task.sleep(nanoseconds: UInt64(retryDelay * 1_000_000_000))
+        retryDelay = min(retryDelay * 2, Self.maxRetryDelay)
+      }
+    }
+    draining = false
+  }
+
+  private func send(_ heartbeat: Heartbeat) async throws {
+    if let last = lastSent, last.data != heartbeat.data {
+      debug("sending old heartbeat for merging")
+      // unlike the python aw-client library, we do not enforce a `commit_interval` and instead send the old event (which is not invalid)
+      // at the current time with a pulse value equal to the time since this event was originally sent. The aw-server will then merge
+      // this new event with the original event, extending the recorded time spent on this particular window/application.
+      let refreshedOldHeartbeat = Heartbeat(
+        // it is important to refresh the hearbeat using the timestamp where the user stopped working on the previous application
+        // more info: https://github.com/ActivityWatch/aw-watcher-window/pull/69
+        // we don't *think* this millisecond subtraction is necessary, but it may be:
+        // https://github.com/ActivityWatch/aw-watcher-window/pull/69#discussion_r987064282
+        timestamp: heartbeat.timestamp - 0.001,
+        data: last.data
+      )
+      try await sendHeartbeatSingle(refreshedOldHeartbeat, pulsetime: heartbeat.timestamp.timeIntervalSince(last.timestamp) + 1)
+    }
+
+    let sinceLast = lastSent != nil ? heartbeat.timestamp.timeIntervalSince(lastSent!.timestamp) : 0
+    try await sendHeartbeatSingle(heartbeat, pulsetime: sinceLast + 1)
+    lastSent = heartbeat
+  }
+}
+
+let heartbeatSender = HeartbeatSender()
+
+func sendHeartbeat(_ heartbeat: Heartbeat) {
+  Task { await heartbeatSender.enqueue(heartbeat) }
 }
 
 func sendHeartbeatSingle(_ heartbeat: Heartbeat, pulsetime: Double) async throws {
