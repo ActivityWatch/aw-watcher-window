@@ -430,28 +430,41 @@ func createBucket() async throws {
 /// server stalled they piled up in parallel (six in flight were observed) and
 /// a failed heartbeat was dropped, so the time until the next successful
 /// send was credited to whatever window happened to be sent next. Now a
-/// failed heartbeat stays at the head of the queue and is retried with
-/// backoff; pulsetimes are computed at send time, relative to the last
-/// heartbeat the server accepted, so the server-side merge still covers the
-/// gap. Heartbeats collected while the server is unreachable (e.g. the
-/// watcher starting before the server at login) are delivered when it comes
-/// back, in order.
-actor HeartbeatSender {
-  /// Oldest heartbeats are dropped past this; ~28 h at one per 10 s.
+/// failed heartbeat is retried with backoff before anything newer is sent;
+/// pulsetimes are computed at send time, relative to the last heartbeat the
+/// server accepted, so the server-side merge still covers the gap.
+/// Heartbeats collected while the server is unreachable (e.g. the watcher
+/// starting before the server at login) are delivered when it comes back,
+/// in order.
+///
+/// `enqueue` is synchronous and takes a lock, so the order of calls (all on
+/// the main thread: poll timer and focus notifications) is the order of
+/// delivery; an actor reached through detached Tasks would not guarantee
+/// that. A single drain Task consumes the queue.
+final class HeartbeatSender: @unchecked Sendable {
+  /// Oldest pending heartbeats are dropped past this; ~28 h at one per 10 s.
   static let maxQueued = 10_000
   static let maxRetryDelay: TimeInterval = 60
 
+  private let lock = NSLock()
+  // Guarded by `lock`:
   private var queue: [Heartbeat] = []
+  /// Taken from the queue and retried until the server accepts it. Kept
+  /// apart from `queue` so dropping the oldest pending entry never touches
+  /// the one being sent.
+  private var inFlight: Heartbeat?
   private var draining = false
-  /// Last heartbeat the server accepted; pulsetimes are relative to it.
-  private var lastSent: Heartbeat?
-  /// Last heartbeat enqueued, for the sub-second dedupe below.
   private var lastEnqueued: Heartbeat?
-  private var retryDelay: TimeInterval = 1
-  private var droppedSinceLastLog = 0
+  private var dropped = 0
+  // Only touched by the single drain task:
+  private var lastSent: Heartbeat?
   private var bucketReady = false
+  private var retryDelay: TimeInterval = 1
 
   func enqueue(_ heartbeat: Heartbeat) {
+    lock.lock()
+    defer { lock.unlock() }
+
     // if you resize a window a ton of events (subsecond) will be fired
     // we enforce a 1s minimum gap between events to avoid this
     if let last = lastEnqueued, heartbeat.timestamp.timeIntervalSince(last.timestamp) <= 0.5 {
@@ -462,7 +475,7 @@ actor HeartbeatSender {
 
     if queue.count >= Self.maxQueued {
       queue.removeFirst()
-      droppedSinceLastLog += 1
+      dropped += 1
     }
     queue.append(heartbeat)
 
@@ -472,27 +485,55 @@ actor HeartbeatSender {
     }
   }
 
+  /// The heartbeat to send next: the one still in flight, else the oldest
+  /// pending one. Ends the drain (under the lock, so no enqueue is missed)
+  /// when there is nothing left.
+  private func next() -> Heartbeat? {
+    lock.lock()
+    defer { lock.unlock() }
+    if inFlight == nil && !queue.isEmpty {
+      inFlight = queue.removeFirst()
+    }
+    if inFlight == nil {
+      draining = false
+    }
+    return inFlight
+  }
+
+  private func accepted() {
+    lock.lock()
+    inFlight = nil
+    lock.unlock()
+  }
+
+  private func pendingCount() -> (queued: Int, dropped: Int) {
+    lock.lock()
+    defer { lock.unlock() }
+    let d = dropped
+    dropped = 0
+    return (queue.count + (inFlight == nil ? 0 : 1), d)
+  }
+
   private func drain() async {
-    while let next = queue.first {
+    while let heartbeat = next() {
       do {
         if !bucketReady {
           try await createBucket()
           bucketReady = true
         }
-        try await send(next)
-        queue.removeFirst()
+        try await send(heartbeat)
+        accepted()
         retryDelay = 1
       } catch {
-        if droppedSinceLastLog > 0 {
-          log("Dropped \(droppedSinceLastLog) oldest queued heartbeats (queue limit \(Self.maxQueued))")
-          droppedSinceLastLog = 0
+        let (queued, dropped) = pendingCount()
+        if dropped > 0 {
+          log("Dropped \(dropped) oldest queued heartbeats (queue limit \(Self.maxQueued))")
         }
-        log("Failed to send heartbeat (\(queue.count) queued), retrying in \(Int(retryDelay))s: \(error.localizedDescription)")
+        log("Failed to send heartbeat (\(queued) queued), retrying in \(Int(retryDelay))s: \(error.localizedDescription)")
         try? await Task.sleep(nanoseconds: UInt64(retryDelay * 1_000_000_000))
         retryDelay = min(retryDelay * 2, Self.maxRetryDelay)
       }
     }
-    draining = false
   }
 
   private func send(_ heartbeat: Heartbeat) async throws {
@@ -521,7 +562,7 @@ actor HeartbeatSender {
 let heartbeatSender = HeartbeatSender()
 
 func sendHeartbeat(_ heartbeat: Heartbeat) {
-  Task { await heartbeatSender.enqueue(heartbeat) }
+  heartbeatSender.enqueue(heartbeat)
 }
 
 func sendHeartbeatSingle(_ heartbeat: Heartbeat, pulsetime: Double) async throws {
