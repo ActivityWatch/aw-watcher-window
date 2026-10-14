@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Embedded into aw-watcher-window-macos (__TEXT,__info_plist) so macOS
+	     Transparency, Consent, and Control (TCC) identifies the helper by a
+	     stable bundle name instead of a bare unix executable. This lets the
+	     Accessibility prompt flow create a named, toggleable entry
+	     ("ActivityWatch Window Helper") in System Settings automatically,
+	     instead of requiring users to manually locate the helper binary. -->
+	<key>CFBundleIdentifier</key>
+	<string>net.activitywatch.aw-watcher-window-macos</string>
+	<key>CFBundleName</key>
+	<string>ActivityWatch Window Helper</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>LSBackgroundOnly</key>
+	<true/>
+</dict>
+</plist>
