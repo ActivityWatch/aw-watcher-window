@@ -166,7 +166,16 @@ def start_offline(state):
 
 def test_records_offline_then_creates_bucket_before_replaying(startup):
     queue = start_offline(startup)
-    startup.server.expected_heartbeats = queue._persistqueue.qsize()
+    # aw-client pre-merges queued heartbeats: each sample is enqueued when the
+    # next, different sample arrives, so the newest one stays cached.
+    client = startup.clients[0]
+    bucket_id = client.client_name + "_" + client.client_hostname
+    assert client.last_heartbeat[bucket_id].data == {
+        "app": "browser",
+        "title": "three",
+    }
+    assert queue._persistqueue.qsize() == 2
+    startup.server.expected_heartbeats = 2
     startup.server.available.set()
     assert startup.server.delivered.wait(2), "queued heartbeats were not replayed"
 
@@ -174,17 +183,14 @@ def test_records_offline_then_creates_bucket_before_replaying(startup):
     assert len(requests_) == startup.server.expected_heartbeats + 1
     method, url, payload = requests_[0]
     assert method == "POST"
-    assert url.endswith(
-        "/buckets/"
-        + startup.clients[0].client_name
-        + "_"
-        + startup.clients[0].client_hostname
-    )
+    assert url.endswith("/buckets/" + bucket_id)
     assert payload["type"] == "currentwindow"
     heartbeats = [payload["data"] for _, url, payload in requests_[1:]]
     assert all("/heartbeat?pulsetime=" in url for _, url, _ in requests_[1:])
-    assert heartbeats[0] == {"app": "editor", "title": "one"}
-    assert {"app": "editor", "title": "two"} in heartbeats
+    assert heartbeats == [
+        {"app": "editor", "title": "one"},
+        {"app": "editor", "title": "two"},
+    ]
 
 
 def test_shutdown_offline_preserves_queued_heartbeats(startup):
