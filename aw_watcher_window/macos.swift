@@ -954,6 +954,16 @@ class MainThing {
       return
     }
 
+    let applicationName = application.localizedName ?? application.bundleIdentifier ?? ""
+    // App exclusion is a privacy guarantee and must run before reading titles
+    // or browser context. Match the real app identity, before incognito or
+    // research filtering can replace it, and break the heartbeat merge chain
+    // so the excluded interval stays a gap (ActivityWatch/aw-watcher-window#156).
+    if appShouldBeExcluded(applicationName) {
+      heartbeatSender.dropForExclusion()
+      return
+    }
+
     // Calculate now before optional browser scripting, which may take time.
     let nowTime = Date.now
     var windowTitle: AnyObject?
@@ -961,7 +971,6 @@ class MainThing {
       AXUIElementCopyAttributeValue(window, kAXTitleAttribute as CFString, &windowTitle)
     }
 
-    let applicationName = application.localizedName ?? application.bundleIdentifier ?? ""
     var data = NetworkMessage(app: applicationName, title: axString(windowTitle) ?? "")
 
     if CHROME_BROWSERS.contains(applicationName) {
