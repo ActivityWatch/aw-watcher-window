@@ -151,6 +151,7 @@ var clientName = "aw-watcher-window"
 var bucketName = "\(clientName)_\(clientHostname)"
 var excludeTitle = false
 var excludeTitlePatterns: [NSRegularExpression] = []
+var excludeAppPatterns: [NSRegularExpression] = []
 var researchEnabled = false
 var researchCategoryMap: [(pattern: String, category: String)] = []
 var researchAppCategoryMap: [(app: String, category: String)] = []
@@ -210,7 +211,7 @@ encoder.dateEncodingStrategy = .custom({ date, encoder in
 start()
 RunLoop.main.run()
 
-func compileExcludeTitlePattern(_ pattern: String) -> NSRegularExpression {
+func compileExcludePattern(_ pattern: String) -> NSRegularExpression {
   do {
     return try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
   } catch let regexError {
@@ -236,7 +237,18 @@ func parseOptionalArguments(_ arguments: ArraySlice<String>) {
         error("Missing value for --exclude-titles")
         exit(1)
       }
-      excludeTitlePatterns.append(compileExcludeTitlePattern(arguments[nextIndex]))
+      excludeTitlePatterns.append(compileExcludePattern(arguments[nextIndex]))
+      index = arguments.index(after: nextIndex)
+      continue
+    }
+
+    if argument == "--exclude-apps" {
+      let nextIndex = arguments.index(after: index)
+      guard nextIndex < arguments.endIndex else {
+        error("Missing value for --exclude-apps")
+        exit(1)
+      }
+      excludeAppPatterns.append(compileExcludePattern(arguments[nextIndex]))
       index = arguments.index(after: nextIndex)
       continue
     }
@@ -280,6 +292,13 @@ func titleShouldBeExcluded(_ title: String) -> Bool {
   let range = NSRange(title.startIndex..<title.endIndex, in: title)
   return excludeTitlePatterns.contains { pattern in
     pattern.firstMatch(in: title, options: [], range: range) != nil
+  }
+}
+
+func appShouldBeExcluded(_ app: String) -> Bool {
+  let range = NSRange(app.startIndex..<app.endIndex, in: app)
+  return excludeAppPatterns.contains { pattern in
+    pattern.firstMatch(in: app, options: [], range: range) != nil
   }
 }
 
@@ -372,7 +391,7 @@ func start() {
 
   // Check that we get the 4 required arguments plus any optional flags
   if arguments.count < 5 {
-    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client> [--exclude-title] [--exclude-titles <pattern> ...] [--research] [--research-category <pattern> <category> ...] [--research-app-category <app_name> <category> ...]")
+    print("Usage: aw-watcher-window <url> <bucket> <hostname> <client> [--exclude-title] [--exclude-titles <pattern> ...] [--exclude-apps <pattern> ...] [--research] [--research-category <pattern> <category> ...] [--research-app-category <app_name> <category> ...]")
     exit(1)
   }
 
@@ -456,6 +475,10 @@ final class HeartbeatSender: @unchecked Sendable {
   private var draining = false
   private var lastEnqueued: Heartbeat?
   private var dropped = 0
+  /// Set when an excluded app becomes frontmost; the next accepted heartbeat
+  /// is sent with pulsetime 0 so the excluded interval stays a gap and is
+  /// never merged into the preceding app's event. Guarded by `lock`.
+  private var breakMerge = false
   // Only touched by the single drain task:
   private var lastSent: Heartbeat?
   private var bucketReady = false
@@ -483,6 +506,27 @@ final class HeartbeatSender: @unchecked Sendable {
       draining = true
       Task { await self.drain() }
     }
+  }
+
+  /// Privacy: called when an excluded app becomes frontmost. Drops any pending
+  /// heartbeats (they predate the exclusion) and forces the next accepted
+  /// heartbeat to be sent with pulsetime 0, so the excluded interval stays a
+  /// gap instead of being merged into the preceding app's event.
+  func dropForExclusion() {
+    lock.lock()
+    defer { lock.unlock() }
+    queue.removeAll()
+    lastEnqueued = nil
+    breakMerge = true
+  }
+
+  /// Reads and clears the break-merge flag under the lock.
+  private func consumeBreakMerge() -> Bool {
+    lock.lock()
+    defer { lock.unlock() }
+    let flag = breakMerge
+    breakMerge = false
+    return flag
   }
 
   /// The heartbeat to send next: the one still in flight, else the oldest
@@ -537,6 +581,15 @@ final class HeartbeatSender: @unchecked Sendable {
   }
 
   private func send(_ heartbeat: Heartbeat) async throws {
+    if consumeBreakMerge() {
+      // An excluded app was just frontmost: leave the excluded interval as a
+      // gap. Send with pulsetime 0 so the server starts a fresh event instead
+      // of merging this heartbeat into the preceding app across the gap.
+      try await sendHeartbeatSingle(heartbeat, pulsetime: 0)
+      lastSent = heartbeat
+      return
+    }
+
     if let last = lastSent, last.data != heartbeat.data {
       debug("sending old heartbeat for merging")
       // unlike the python aw-client library, we do not enforce a `commit_interval` and instead send the old event (which is not invalid)
@@ -695,6 +748,24 @@ class MainThing {
     AXUIElementCopyAttributeValue(axElement, kAXTitleAttribute as CFString, &windowTitle)
 
     let applicationName = frontmost.localizedName ?? frontmost.bundleIdentifier ?? ""
+
+    // App exclusion is a privacy guarantee and must run before any browser
+    // processing: an excluded app must neither produce a heartbeat nor surface
+    // its title/URL in logs. The check sees the real app name (localizedName,
+    // falling back to bundleIdentifier) — the later incognito branch clears it
+    // only after this point, so patterns match e.g. "Google Chrome", not "".
+    // Note: localizedName is localized, so a pattern written for another
+    // platform's raw app name may not match here. Dropping the pending
+    // heartbeat keeps the excluded interval a gap — otherwise the next
+    // heartbeat's elapsed-time pulse would refresh the preceding app's event
+    // across the gap.
+    if appShouldBeExcluded(applicationName) {
+      // Drop pending heartbeats and force the next send to break the merge
+      // chain, so no in-flight or queued heartbeat bridges the excluded gap.
+      heartbeatSender.dropForExclusion()
+      return
+    }
+
     var data = NetworkMessage(app: applicationName, title: axString(windowTitle) ?? "")
 
     if CHROME_BROWSERS.contains(applicationName) {

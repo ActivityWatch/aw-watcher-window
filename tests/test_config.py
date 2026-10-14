@@ -198,9 +198,9 @@ def test_exclude_titles_toml_values(tmp_path, monkeypatch, value, expected):
 
     assert args.exclude_titles == expected
     if expected == ["1Password"]:
-        from aw_watcher_window.main import transform_window, try_compile_title_regex
+        from aw_watcher_window.main import transform_window, try_compile_regex
 
-        patterns = [try_compile_title_regex(title) for title in args.exclude_titles]
+        patterns = [try_compile_regex(title) for title in args.exclude_titles]
         assert len(patterns) == 1
         for title in ["1Password vault", "Project notes", "Terminal"]:
             expected_title = "excluded" if title == "1Password vault" else title
@@ -240,3 +240,66 @@ def test_cli_exclude_titles_overrides_invalid_config(tmp_path, monkeypatch):
     )
 
     assert config_module.parse_args().exclude_titles == ["Secret.*", "Private"]
+
+
+def test_exclude_apps_string_in_config_is_coerced_to_single_pattern(monkeypatch):
+    """A bare string in config must not be iterated character-by-character.
+
+    ``exclude_apps = "1Password"`` is natural TOML for one app. argparse's
+    ``nargs='+'`` hands a string default through unchanged, and main.py would
+    then compile each *character* as a pattern — silently excluding far more
+    than the user asked for.
+    """
+    monkeypatch.setattr(
+        config_module,
+        "load_config",
+        lambda: {
+            "exclude_title": False,
+            "exclude_titles": [],
+            "exclude_apps": "1Password",
+            "poll_time": 1.0,
+            "strategy_macos": "swift",
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window"])
+
+    args = config_module.parse_args()
+
+    assert args.exclude_apps == ["1Password"]
+
+
+def test_exclude_apps_list_in_config_is_preserved(monkeypatch):
+    """The list form is the documented shape and must be untouched."""
+    monkeypatch.setattr(
+        config_module,
+        "load_config",
+        lambda: {
+            "exclude_title": False,
+            "exclude_titles": [],
+            "exclude_apps": ["1Password", "KeePassXC"],
+            "poll_time": 1.0,
+            "strategy_macos": "swift",
+        },
+    )
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window"])
+
+    args = config_module.parse_args()
+
+    assert args.exclude_apps == ["1Password", "KeePassXC"]
+
+
+@pytest.mark.parametrize("value", ["17", "true", "{pattern = 'Secret'}", '["Secret", 17]'])
+def test_invalid_exclude_apps_config_errors(tmp_path, monkeypatch, capsys, value):
+    _patch_config_dir(monkeypatch, tmp_path)
+    config_dir = tmp_path / "activitywatch" / "aw-watcher-window"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "aw-watcher-window.toml").write_text(
+        f"[aw-watcher-window]\nexclude_apps = {value}\n"
+    )
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window"])
+
+    with pytest.raises(SystemExit) as exc:
+        config_module.parse_args()
+
+    assert exc.value.code == 2
+    assert "exclude_apps must be a string or a list of strings" in capsys.readouterr().err

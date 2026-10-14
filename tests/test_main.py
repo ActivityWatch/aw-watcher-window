@@ -57,6 +57,7 @@ def test_research_mode_passes_map_to_macos_swift_strategy(monkeypatch):
             strategy="swift",
             exclude_title=False,
             exclude_titles=[],
+            exclude_apps=[],
             research_enabled=True,
             research_category_map={"youtube": "Youtube"},
             research_app_category_map={},
@@ -113,6 +114,29 @@ def test_build_swift_command_passes_title_filters():
         "Zoom",
         "--exclude-titles",
         "Slack.*huddle",
+    ]
+
+
+def test_build_swift_command_passes_app_filters():
+    command = build_swift_command(
+        "/tmp/aw-watcher-window-macos",
+        "http://localhost:5600",
+        "bucket",
+        "host.localdomain",
+        "aw-watcher-window",
+        exclude_apps=["1Password", "KeePassXC"],
+    )
+
+    assert command == [
+        "/tmp/aw-watcher-window-macos",
+        "http://localhost:5600",
+        "bucket",
+        "host.localdomain",
+        "aw-watcher-window",
+        "--exclude-apps",
+        "1Password",
+        "--exclude-apps",
+        "KeePassXC",
     ]
 
 
@@ -205,6 +229,159 @@ def test_legacy_exclude_titles_still_apply_without_research_mode():
     assert transformed == {"app": "Chrome", "title": "excluded"}
 
 
+def test_exclude_apps_returns_none_for_matching_app():
+    window = {"app": "1Password", "title": "Vault"}
+
+    result = main_module.transform_window(
+        window,
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+    )
+
+    assert result is None
+
+
+def test_exclude_apps_passes_non_matching_app():
+    window = {"app": "Chrome", "title": "Some page"}
+
+    result = main_module.transform_window(
+        window,
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+    )
+
+    assert result == {"app": "Chrome", "title": "Some page"}
+
+
+def test_exclude_apps_regex_partial_match():
+    window = {"app": "org.gnome.Nautilus", "title": "Home"}
+
+    result = main_module.transform_window(
+        window,
+        exclude_apps=[re.compile("Nautilus")],
+    )
+
+    assert result is None
+
+
+def test_exclude_apps_empty_list_does_not_suppress():
+    window = {"app": "Terminal", "title": "bash"}
+
+    result = main_module.transform_window(window, exclude_apps=[])
+
+    assert result == {"app": "Terminal", "title": "bash"}
+
+
+def test_exclude_apps_suppresses_in_research_mode():
+    """App exclusion is a privacy guarantee and must precede research mode."""
+    window = {
+        "app": "1Password",
+        "title": "Vault",
+        "url": "https://example.com",
+    }
+
+    result = main_module.transform_window(
+        window,
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+        research_category_map={"example": "Example"},
+    )
+
+    assert result is None
+
+
+def test_try_compile_regex_is_case_insensitive():
+    """Production compiles patterns case-insensitively, matching the Swift helper."""
+    pattern = main_module.try_compile_regex("1password")
+
+    assert pattern.search("1Password") is not None
+    assert main_module.transform_window(
+        {"app": "1Password", "title": "Vault"},
+        exclude_apps=[pattern],
+    ) is None
+
+
+def test_try_compile_regex_exits_on_invalid_pattern():
+    with pytest.raises(SystemExit):
+        main_module.try_compile_regex("[")
+
+
+def _run_heartbeat_loop(monkeypatch, windows, **kwargs):
+    """Drive heartbeat_loop over a fixed window sequence, then stop it."""
+    heartbeats = []
+    pulsetimes = []
+
+    class FakeClient:
+        def heartbeat(self, *args, **kw):
+            heartbeats.append(args[1])
+            pulsetimes.append(kw.get("pulsetime"))
+
+    pending = list(windows)
+
+    def fake_get_current_window(_strategy):
+        if pending:
+            return pending.pop(0)
+        # FatalError is the loop's own clean-exit signal.
+        raise main_module.FatalError("done")
+
+    monkeypatch.setattr(main_module, "get_current_window", fake_get_current_window)
+    monkeypatch.setattr(main_module, "sleep", lambda *_: None)
+    main_module.heartbeat_loop(
+        FakeClient(), "bucket", poll_time=1.0, strategy="swift", **kwargs
+    )
+    return heartbeats, pulsetimes
+
+
+def test_heartbeat_loop_skips_heartbeat_for_excluded_app(monkeypatch):
+    heartbeats, _ = _run_heartbeat_loop(
+        monkeypatch,
+        [{"app": "1Password", "title": "Vault"}],
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+    )
+
+    assert heartbeats == []
+
+
+def test_heartbeat_loop_sends_heartbeat_for_logged_app(monkeypatch):
+    heartbeats, pulsetimes = _run_heartbeat_loop(
+        monkeypatch,
+        [{"app": "Chrome", "title": "Some page"}],
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+    )
+
+    assert len(heartbeats) == 1
+    assert heartbeats[0].data == {"app": "Chrome", "title": "Some page"}
+    assert pulsetimes == [main_module.compute_pulsetime(1.0)]
+
+
+def test_heartbeat_loop_excluded_app_between_allowed_windows(monkeypatch):
+    """An excluded app flanked by allowed windows never reaches the client.
+
+    Guards the privacy guarantee across a sequence: the excluded window emits
+    no heartbeat, and the loop keeps processing the allowed windows on either
+    side (it does not stall or leak the suppressed window's data).
+    """
+    heartbeats, pulsetimes = _run_heartbeat_loop(
+        monkeypatch,
+        [
+            {"app": "Editor", "title": "file.py"},
+            # The excluded window's title carries its app name too, so a
+            # bypassed exclusion is caught by the title assertion below (with a
+            # plain title like "Vault" that assertion could never fail). The
+            # app-name assertion catches it too: a leaked heartbeat would make
+            # the app list ["Editor", "1Password", "Editor"].
+            {"app": "1Password", "title": "1Password — Vault"},
+            {"app": "Editor", "title": "file.py"},
+        ],
+        exclude_apps=[re.compile("1Password", re.IGNORECASE)],
+    )
+
+    assert [hb.data["app"] for hb in heartbeats] == ["Editor", "Editor"]
+    assert all("1Password" not in hb.data.get("title", "") for hb in heartbeats)
+    # The first heartbeat is a fresh chain (compute_pulsetime). After the
+    # excluded window, the next heartbeat must use pulsetime=0 so the server
+    # cannot merge it into the pre-exclusion Editor event — otherwise a visit
+    # shorter than compute_pulsetime(poll_time) is attributed to the Editor.
+    assert pulsetimes == [main_module.compute_pulsetime(1.0), 0.0]
+
+
 @pytest.mark.parametrize(
     "poll_time,expected_pulsetime",
     [
@@ -277,6 +454,7 @@ def test_swift_strategy_propagates_helper_crash(monkeypatch):
             strategy="swift",
             exclude_title=False,
             exclude_titles=[],
+            exclude_apps=[],
             research_enabled=False,
             research_category_map={},
             research_app_category_map={},
@@ -409,9 +587,12 @@ def test_heartbeat_loop_repeated_exception_logs_once_and_backs_off(monkeypatch, 
     assert len(tracebacks) == 1
     assert len(summaries) == 2  # at 100 and 200 repeats
     # Total interval is capped at 60s: extra sleep (on top of the 1s poll_time)
-    # grows to at most 59s.
-    assert max(sleep_calls) == 59.0
+    # grows to at most 59s. The backoff sleeps in 1-second chunks (parent-death
+    # check between chunks), so no single sleep call exceeds 1.0 — but the total
+    # time across 250 failing polls proves the cap is still honored.
+    assert max(sleep_calls) == 1.0
     assert sum(sleep_calls) < n_errors * 60.0  # each poll: poll_time(1s) + extra(≤59s)
+    assert sum(sleep_calls) > 60.0  # backoff actually grows to the cap
 
 
 def test_heartbeat_loop_alternating_exceptions_backs_off(monkeypatch, caplog):
@@ -449,10 +630,12 @@ def test_heartbeat_loop_alternating_exceptions_backs_off(monkeypatch, caplog):
     # Exactly one traceback per distinct error signature (2 here), not one per poll.
     assert len(tracebacks) == 2
 
-    # Backoff must grow: with 20 alternating errors the extra sleep must exceed
-    # poll_time (1.0) before the loop ends.
-    backoff_sleeps = [s for s in sleep_calls if s > 1.0]
-    assert len(backoff_sleeps) > 0, "Expected growing backoff on alternating errors"
+    # Backoff must grow: with 20 alternating errors the total extra sleep must
+    # exceed poll_time (1.0) before the loop ends. Backoff sleeps in 1-second
+    # chunks (parent-death check between chunks), so growth shows up in the
+    # total, not in any single call.
+    total_extra = sum(sleep_calls) - n_errors * 1.0  # subtract the poll_time sleeps
+    assert total_extra > 0, "Expected growing backoff on alternating errors"
 
 
 def test_heartbeat_loop_long_poll_time_no_negative_sleep(monkeypatch):
