@@ -183,10 +183,11 @@ def main():
     bucket_id = f"{client.client_name}_{client.client_hostname}"
     event_type = "currentwindow"
 
+    # Register before connecting: the queue creates the bucket and retries
+    # delivery even if the server is still starting (e.g. during a slow boot).
     client.create_bucket(bucket_id, event_type, queued=True)
 
     logger.info("aw-watcher-window started")
-    client.wait_for_start()
 
     with client:
         research_category_map = (
