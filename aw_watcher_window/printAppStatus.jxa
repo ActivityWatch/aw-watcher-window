@@ -20,6 +20,68 @@ var url = undefined, incognito = undefined, title = undefined;
 // it's not possible to get the URL from firefox
 // https://stackoverflow.com/questions/17846948/does-firefox-offer-applescript-support-to-get-url-of-windows
 
+// Handle WhatsApp first (before switch statement) due to potential hidden characters in app name
+if(appName.indexOf("WhatsApp") !== -1) {
+  // Get the active chat name from WhatsApp's navigation bar header
+  try {
+    mainWindow = oProcess.
+      windows().
+      find(w => w.attributes.byName("AXMain").value() === true);
+
+    if (mainWindow) {
+      var chatName = undefined;
+
+      // The chat name appears as an AXHeading with identifier "NavigationBar_HeaderViewButton"
+      // In WhatsApp/Electron apps, the text is in AXDescription, not AXLabel
+      var allElements = mainWindow.entireContents();
+      for (var i = 0; i < allElements.length; i++) {
+        try {
+          var elem = allElements[i];
+          var role = elem.attributes.byName("AXRole").value();
+
+          // Look for AXHeading elements (the chat name in the header)
+          if (role === "AXHeading") {
+            try {
+              // Check if it has the NavigationBar identifier (WhatsApp-specific)
+              var identifier = elem.attributes.byName("AXIdentifier").value();
+              if (identifier && identifier === "NavigationBar_HeaderViewButton") {
+                // Use AXDescription, not AXLabel (Electron app quirk)
+                chatName = elem.attributes.byName("AXDescription").value();
+                break;
+              }
+            } catch (e) {
+              // Continue searching
+            }
+          }
+        } catch (e) {
+          // Continue searching
+        }
+      }
+
+      // Set title to just the chat name
+      if (chatName && chatName.length > 0) {
+        title = chatName;
+      } else {
+        // Fallback to default window title if we couldn't get the chat name
+        title = mainWindow.attributes.byName("AXTitle").value();
+      }
+    }
+  } catch (e) {
+    // If anything fails, fall back to default title behavior
+    try {
+      mainWindow = oProcess.
+        windows().
+        find(w => w.attributes.byName("AXMain").value() === true);
+      if (mainWindow) {
+        title = mainWindow.attributes.byName("AXTitle").value();
+      }
+    } catch (e2) {
+      // Final fallback
+      title = undefined;
+    }
+  }
+}
+
 switch(appName) {
   case "Safari":
     // incognito is not available via safari applescript
@@ -42,17 +104,20 @@ switch(appName) {
     title = Application(appName).windows[0].name();
     break;
   default:
-    mainWindow = oProcess.
-      windows().
-      find(w => w.attributes.byName("AXMain").value() === true)
+    // Only set title if it hasn't been set already (e.g., by WhatsApp handler above)
+    if (title === undefined) {
+      mainWindow = oProcess.
+        windows().
+        find(w => w.attributes.byName("AXMain").value() === true)
 
-    // in some cases, the primary window of an application may not be found
-    // this occurs rarely and seems to be triggered by switching to a different application
-    if(mainWindow) {
-      title = mainWindow.
-        attributes.
-        byName("AXTitle").
-        value()
+      // in some cases, the primary window of an application may not be found
+      // this occurs rarely and seems to be triggered by switching to a different application
+      if(mainWindow) {
+        title = mainWindow.
+          attributes.
+          byName("AXTitle").
+          value()
+      }
     }
 }
 
