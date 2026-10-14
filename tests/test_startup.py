@@ -110,6 +110,7 @@ def startup(tmp_path, monkeypatch):
             strategy="xlib",
             exclude_title=False,
             exclude_titles=[],
+            exclude_apps=[],
             research_enabled=False,
             research_category_map={},
             research_app_category_map={},
