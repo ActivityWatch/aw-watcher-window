@@ -104,3 +104,19 @@ def test_current_window_ignores_non_uwp_apps(monkeypatch, windows):
     )
     monkeypatch.setattr(windows, "get_uwp_app_window", fail)
     assert get_current_window_windows()["app"] == "chrome.exe"
+
+
+def test_current_window_keeps_frame_host_when_child_lookup_fails(monkeypatch, windows):
+    from aw_watcher_window.lib import get_current_window_windows
+
+    def fail(hwnd):
+        raise OSError("access denied")
+
+    _fake_foreground(
+        monkeypatch,
+        windows,
+        app_names={FRAME: "ApplicationFrameHost.exe"},
+        uwp_window=None,
+    )
+    monkeypatch.setattr(windows, "get_uwp_app_window", fail)
+    assert get_current_window_windows()["app"] == "ApplicationFrameHost.exe"
