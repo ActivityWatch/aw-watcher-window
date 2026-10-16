@@ -47,6 +47,10 @@ def get_current_window_windows() -> Optional[dict]:
 
     try:
         app = windows.get_app_name(window_handle)
+        if app and app.lower() == windows.FRAME_HOST_APP:
+            uwp_window = windows.get_uwp_app_window(window_handle)
+            if uwp_window:
+                app = windows.get_app_name(uwp_window)
     except Exception:
         # Fall back to WMI for elevated/admin processes where OpenProcess fails
         try:
