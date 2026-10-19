@@ -62,6 +62,7 @@ def get_current_window_windows() -> Optional[dict]:
             if uwp_window:
                 app = windows.get_app_name(uwp_window) or app
         except Exception:
+            # Keep the frame-host name if the UWP child lookup fails.
             pass
 
     title = windows.get_window_title(window_handle)
