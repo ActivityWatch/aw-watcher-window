@@ -54,6 +54,17 @@ def get_current_window_windows() -> Optional[dict]:
         except Exception:
             app = None
 
+    # UWP apps are hosted in a frame window owned by ApplicationFrameHost.exe;
+    # report the hosted app instead, keeping the host name if that fails.
+    if app and app.lower() == windows.FRAME_HOST_APP:
+        try:
+            uwp_window = windows.get_uwp_app_window(window_handle)
+            if uwp_window:
+                app = windows.get_app_name(uwp_window) or app
+        except Exception:
+            # Keep the frame-host name if the UWP child lookup fails.
+            pass
+
     title = windows.get_window_title(window_handle)
 
     if app is None:
