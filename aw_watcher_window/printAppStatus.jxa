@@ -17,43 +17,90 @@ var appName       = oProcess.displayedName();
 // and the previously set values will be cached otherwise
 var url = undefined, incognito = undefined, title = undefined;
 
+// Reported when the frontmost app has no window we can inspect. Some apps are
+// not scriptable via JXA at all, and some scriptable apps are open with no
+// window (or only a devtools window). An uncaught throw here aborts the whole
+// poll, so every window lookup below is guarded and falls back to this value.
+var NO_WINDOW_TITLE = "No window";
+
+// Best-effort title of the frontmost app's main window, read through the
+// Accessibility API (which also works for apps that don't support JXA
+// scripting). Returns undefined when no window title can be read.
+function axWindowTitle(proc) {
+  try {
+    var mainWindow = proc.windows().find(function(w) {
+      try {
+        return w.attributes.byName("AXMain").value() === true;
+      } catch (e) {
+        return false;
+      }
+    });
+    if (mainWindow) {
+      return mainWindow.attributes.byName("AXTitle").value();
+    }
+  } catch (e) {
+    // The app exposes no scriptable windows.
+  }
+  try {
+    // No window is flagged as AXMain (e.g. a dialog); take the first one.
+    return proc.windows()[0].attributes.byName("AXTitle").value();
+  } catch (e) {
+    return undefined;
+  }
+}
+
 // it's not possible to get the URL from firefox
 // https://stackoverflow.com/questions/17846948/does-firefox-offer-applescript-support-to-get-url-of-windows
 
 switch(appName) {
   case "Safari":
     // incognito is not available via safari applescript
-    url = Application(appName).documents[0].url();
-    title = Application(appName).documents[0].name();
+    try {
+      url = Application(appName).documents[0].url();
+      title = Application(appName).documents[0].name();
+    } catch (e) {
+      // Discard partial browser reads before using an Accessibility title.
+      url = undefined;
+      incognito = undefined;
+      // Safari can be open with no document (no window, or devtools only).
+      title = axWindowTitle(oProcess);
+    }
     break;
   case "Google Chrome":
   case "Google Chrome Canary":
   case "Chromium":
   case "Brave Browser":
-    const activeWindow = Application(appName).windows[0];
-    const activeTab = activeWindow.activeTab();
+    try {
+      var activeWindow = Application(appName).windows[0];
+      var activeTab = activeWindow.activeTab();
 
-    url = activeTab.url();
-    title = activeTab.name();
-    incognito = activeWindow.mode() === 'incognito';
+      url = activeTab.url();
+      title = activeTab.name();
+      incognito = activeWindow.mode() === 'incognito';
+    } catch (e) {
+      // Discard partial browser reads before using an Accessibility title.
+      url = undefined;
+      incognito = undefined;
+      // The browser can be open with no window.
+      title = axWindowTitle(oProcess);
+    }
     break;
   case "Firefox":
   case "Firefox Developer Edition":
-    title = Application(appName).windows[0].name();
+    try {
+      title = Application(appName).windows[0].name();
+    } catch (e) {
+      title = axWindowTitle(oProcess);
+    }
     break;
   default:
-    mainWindow = oProcess.
-      windows().
-      find(w => w.attributes.byName("AXMain").value() === true)
+    title = axWindowTitle(oProcess);
+}
 
-    // in some cases, the primary window of an application may not be found
-    // this occurs rarely and seems to be triggered by switching to a different application
-    if(mainWindow) {
-      title = mainWindow.
-        attributes.
-        byName("AXTitle").
-        value()
-    }
+// The Python side requires a title key (it indexes current_window["title"]),
+// so never leave it undefined.
+if (title === undefined) {
+  title = NO_WINDOW_TITLE;
 }
 
 // key names must match expected names in lib.py
