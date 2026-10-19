@@ -52,6 +52,9 @@ jobs:
       shell: bash
       run: |
         otool -l aw_watcher_window/aw-watcher-window-macos | grep -A4 'LC_BUILD_VERSION' | grep 'minos 12.0'
+    - uses: actions/setup-node@v4
+      with:
+        node-version: '22'
     - name: Run tests
       shell: bash
       run: |

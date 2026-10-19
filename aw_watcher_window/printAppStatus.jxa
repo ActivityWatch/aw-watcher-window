@@ -59,6 +59,9 @@ switch(appName) {
       url = Application(appName).documents[0].url();
       title = Application(appName).documents[0].name();
     } catch (e) {
+      // Discard partial browser reads before using an Accessibility title.
+      url = undefined;
+      incognito = undefined;
       // Safari can be open with no document (no window, or devtools only).
       title = axWindowTitle(oProcess);
     }
@@ -75,6 +78,9 @@ switch(appName) {
       title = activeTab.name();
       incognito = activeWindow.mode() === 'incognito';
     } catch (e) {
+      // Discard partial browser reads before using an Accessibility title.
+      url = undefined;
+      incognito = undefined;
       // The browser can be open with no window.
       title = axWindowTitle(oProcess);
     }
