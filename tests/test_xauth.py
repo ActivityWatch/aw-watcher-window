@@ -7,7 +7,6 @@ arbitrary records. Cookies are never printed or put into exception messages.
 """
 
 import struct
-from types import SimpleNamespace
 
 import pytest
 
