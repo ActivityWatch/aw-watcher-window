@@ -266,8 +266,9 @@ def test_cookie_and_stored_bytes_stay_out_of_diagnostics(tmp_path, capsys):
         lookup(path, LOCAL, HOST, 0)
     captured = capsys.readouterr()
     for text in (str(excinfo.value), repr(excinfo.value), captured.out, captured.err):
-        assert COOKIE.decode("latin1") not in text
-        assert OTHER_COOKIE.decode("latin1") not in text
+        for cookie in (COOKIE, OTHER_COOKIE):
+            for representation in (cookie.decode("latin1"), repr(cookie), cookie.hex()):
+                assert representation not in text
 
 
 # ---------------------------------------------------------------------------
