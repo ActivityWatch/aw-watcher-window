@@ -57,7 +57,7 @@ def parse_args():
     default_strategy_macos = config["strategy_macos"]
     default_research_enabled = config.get("research_enabled", False)
     default_auth_user = config.get("auth_user") or ""
-    default_auth_password = config.get("auth_password") or ""
+    default_auth_password = config.get("auth_password")
 
     parser = argparse.ArgumentParser(
         description="A cross platform window watcher for Activitywatch.\nSupported on: Linux (X11), macOS and Windows."
