@@ -147,6 +147,52 @@ def try_compile_regex(pattern):
         raise SystemExit(1)
 
 
+def _auth_configured(args) -> bool:
+    return bool(getattr(args, "auth_user", None) and getattr(args, "auth_password", None))
+
+
+def _enable_basic_auth(client, user, password):
+    """Inject HTTP Basic Auth without replacing aw-client HTTP methods.
+
+    ActivityWatch/aw-watcher-window#127 replaced ``_get``/``_post``/``_delete``.
+    That matches locked aw-client 0.5.14, but current aw-client master passes
+    API-key headers and a loopback proxy bypass through those methods. Patch
+    the client module's ``requests`` calls so whichever kwargs the installed
+    client already sends are preserved. Basic auth and the server API key both
+    use Authorization, so refuse both.
+    """
+    if getattr(client, "server_api_key", None):
+        logger.error(
+            "HTTP Basic Auth and the ActivityWatch server API key both set "
+            "the Authorization header. Unset one of them."
+        )
+        raise SystemExit(1)
+
+    import aw_client.client as aw_client_client
+
+    auth = (user, password)
+    prefix = client.server_address.rstrip("/")
+
+    def _wrap(orig):
+        if getattr(orig, "_aw_basic_auth", False):
+            return orig
+
+        def wrapped(url, *args, **kwargs):
+            if str(url).startswith(prefix):
+                kwargs.setdefault("auth", auth)
+            return orig(url, *args, **kwargs)
+
+        wrapped._aw_basic_auth = True
+        return wrapped
+
+    for name in ("get", "post", "delete"):
+        setattr(
+            aw_client_client.req,
+            name,
+            _wrap(getattr(aw_client_client.req, name)),
+        )
+
+
 def main():
     # Must run before parse_args(): in a frozen build multiprocessing re-executes
     # this binary for helper processes and their argv would be rejected below.
@@ -184,6 +230,18 @@ def main():
     client = ActivityWatchClient(
         "aw-watcher-window", host=args.host, port=args.port, testing=args.testing
     )
+
+    if _auth_configured(args):
+        if sys.platform == "darwin" and args.strategy == "swift":
+            logger.error(
+                "HTTP Basic Auth is configured, but the macOS swift strategy "
+                "sends heartbeats from a separate binary and cannot attach "
+                "those credentials. Refusing to start so requests are not "
+                "silently unauthenticated. Use --strategy jxa or --strategy applescript."
+            )
+            sys.exit(1)
+        _enable_basic_auth(client, args.auth_user, args.auth_password)
+        logger.info("HTTP Basic Auth enabled for user: %s", args.auth_user)
 
     bucket_id = f"{client.client_name}_{client.client_hostname}"
     event_type = "currentwindow"

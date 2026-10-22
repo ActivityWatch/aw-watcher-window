@@ -356,3 +356,52 @@ def test_invalid_exclude_apps_config_errors(tmp_path, monkeypatch, capsys, value
 
     assert exc.value.code == 2
     assert "exclude_apps must be a string or a list of strings" in capsys.readouterr().err
+
+
+def test_first_run_config_has_no_auth_keys(tmp_path, monkeypatch):
+    """Auth secrets must not be authored into a fresh user's config template."""
+    _patch_config_dir(monkeypatch, tmp_path)
+
+    config_module.load_config()
+
+    written = next(tmp_path.rglob("aw-watcher-window.toml")).read_text()
+    assert "auth_user" not in written
+    assert "auth_password" not in written
+
+
+def test_auth_options_are_read_when_user_sets_them(tmp_path, monkeypatch):
+    _patch_config_dir(monkeypatch, tmp_path)
+    config_path = tmp_path / "activitywatch" / "aw-watcher-window"
+    config_path.mkdir(parents=True)
+    (config_path / "aw-watcher-window.toml").write_text(
+        "[aw-watcher-window]\n"
+        'auth_user = "alice"\n'
+        'auth_password = "s3cret"\n'
+    )
+    monkeypatch.setattr(sys, "argv", ["aw-watcher-window"])
+
+    args = config_module.parse_args()
+
+    assert args.auth_user == "alice"
+    assert args.auth_password == "s3cret"
+
+
+def test_auth_cli_flags_override_config(tmp_path, monkeypatch):
+    _patch_config_dir(monkeypatch, tmp_path)
+    config_path = tmp_path / "activitywatch" / "aw-watcher-window"
+    config_path.mkdir(parents=True)
+    (config_path / "aw-watcher-window.toml").write_text(
+        "[aw-watcher-window]\n"
+        'auth_user = "alice"\n'
+        'auth_password = "from-config"\n'
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["aw-watcher-window", "--auth-user", "bob", "--auth-password", "from-cli"],
+    )
+
+    args = config_module.parse_args()
+
+    assert args.auth_user == "bob"
+    assert args.auth_password == "from-cli"
