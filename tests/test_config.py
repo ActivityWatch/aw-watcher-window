@@ -369,21 +369,22 @@ def test_first_run_config_has_no_auth_keys(tmp_path, monkeypatch):
     assert "auth_password" not in written
 
 
-def test_auth_options_are_read_when_user_sets_them(tmp_path, monkeypatch):
+@pytest.mark.parametrize("password", ["s3cret", "", None])
+def test_auth_options_are_read_when_user_sets_them(tmp_path, monkeypatch, password):
     _patch_config_dir(monkeypatch, tmp_path)
     config_path = tmp_path / "activitywatch" / "aw-watcher-window"
     config_path.mkdir(parents=True)
     (config_path / "aw-watcher-window.toml").write_text(
         "[aw-watcher-window]\n"
         'auth_user = "alice"\n'
-        'auth_password = "s3cret"\n'
+        + (f'auth_password = "{password}"\n' if password is not None else "")
     )
     monkeypatch.setattr(sys, "argv", ["aw-watcher-window"])
 
     args = config_module.parse_args()
 
     assert args.auth_user == "alice"
-    assert args.auth_password == "s3cret"
+    assert args.auth_password == password
 
 
 def test_auth_cli_flags_override_config(tmp_path, monkeypatch):

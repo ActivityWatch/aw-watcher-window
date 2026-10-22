@@ -148,7 +148,9 @@ def try_compile_regex(pattern):
 
 
 def _auth_configured(args) -> bool:
-    return bool(getattr(args, "auth_user", None) and getattr(args, "auth_password", None))
+    return bool(getattr(args, "auth_user", None)) and (
+        getattr(args, "auth_password", None) is not None
+    )
 
 
 def _enable_basic_auth(client, user, password):

@@ -640,7 +640,35 @@ def test_swift_strategy_propagates_helper_crash(monkeypatch):
     assert exc.value.code == 134
 
 
-def test_swift_refuses_to_start_when_basic_auth_configured(monkeypatch):
+@pytest.mark.parametrize(
+    "user,password,expected",
+    [
+        ("alice", "secret", True),
+        ("alice", "", True),
+        ("alice", None, False),
+        (None, "secret", False),
+        ("", "secret", False),
+    ],
+)
+def test_auth_configured(user, password, expected):
+    args = SimpleNamespace(auth_user=user, auth_password=password)
+    assert main_module._auth_configured(args) is expected
+
+
+def test_basic_auth_test_restores_all_request_methods(monkeypatch):
+    import aw_client.client as aw_client_client
+
+    originals = {
+        name: getattr(aw_client_client.req, name) for name in ("get", "post", "delete")
+    }
+    with monkeypatch.context() as patch:
+        test_enable_basic_auth_adds_auth_and_keeps_other_kwargs(patch)
+    for name, original in originals.items():
+        assert getattr(aw_client_client.req, name) is original
+
+
+@pytest.mark.parametrize("password", ["secret", ""])
+def test_swift_refuses_to_start_when_basic_auth_configured(monkeypatch, password):
     commands = []
 
     class FakeProcess:
@@ -693,7 +721,7 @@ def test_swift_refuses_to_start_when_basic_auth_configured(monkeypatch):
             research_app_category_map={},
             privacy_filter_rules=[],
             auth_user="alice",
-            auth_password="secret",
+            auth_password=password,
         ),
     )
 
@@ -784,6 +812,11 @@ def test_enable_basic_auth_adds_auth_and_keeps_other_kwargs(monkeypatch):
         return Response()
 
     monkeypatch.setattr(aw_client_client.req, "get", fake_get)
+    # The helper patches all three methods; register each for teardown.
+    for name in ("post", "delete"):
+        monkeypatch.setattr(
+            aw_client_client.req, name, getattr(aw_client_client.req, name)
+        )
     client = SimpleNamespace(
         server_address="http://aw.example.com:5601",
         server_api_key=None,
