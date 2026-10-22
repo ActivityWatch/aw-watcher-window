@@ -91,4 +91,67 @@ check("first window fallback", capture("Finder", {}, () => [windowWithTitle("Des
 check("empty title preserved", capture("Terminal", {}, () => [windowWithTitle("", true)]),
   { app: "Terminal", title: "" });
 
+// WhatsApp-specific fixtures model the contributor's reported AX attributes.
+// They exercise control flow only, not the shape or latency of the native tree.
+function chatHeading(description, identifier = "NavigationBar_HeaderViewButton", role = "AXHeading") {
+  return { attributes: { byName: (name) => ({ value: () => ({
+    AXRole: role, AXIdentifier: identifier, AXDescription: description,
+  })[name] }) } };
+}
+
+function whatsAppWindow(elements, title = "WhatsApp") {
+  return Object.assign(windowWithTitle(title, true), {
+    entireContents: typeof elements === "function" ? elements : () => elements,
+  });
+}
+
+check("WhatsApp chat heading", capture("WhatsApp", {},
+  () => [whatsAppWindow([chatHeading("Alice")])]),
+{ app: "WhatsApp", title: "Alice" });
+
+for (const elements of [[], [chatHeading("")], [chatHeading(null)],
+  [chatHeading("Alice", "OtherHeader")], [chatHeading("Alice", undefined, "AXButton")]]) {
+  check("WhatsApp missing chat fallback", capture("WhatsApp", {},
+    () => [whatsAppWindow(elements)]), { app: "WhatsApp", title: "WhatsApp" });
+}
+check("WhatsApp inaccessible element is skipped", capture("WhatsApp", {},
+  () => [whatsAppWindow([{ attributes: { byName: fail } }, chatHeading("Work Group")])]),
+{ app: "WhatsApp", title: "Work Group" });
+check("WhatsApp AXMain failure is skipped", capture("WhatsApp", {},
+  () => [{ attributes: { byName: fail } }, whatsAppWindow([chatHeading("Alice")])]),
+{ app: "WhatsApp", title: "Alice" });
+check("WhatsApp tree failure falls back", capture("WhatsApp", {},
+  () => [whatsAppWindow(fail)]), { app: "WhatsApp", title: "WhatsApp" });
+check("WhatsApp no windows", capture("WhatsApp"),
+  { app: "WhatsApp", title: "No window" });
+check("WhatsApp unscriptable", capture("WhatsApp", {}, fail),
+  { app: "WhatsApp", title: "No window" });
+check("WhatsApp no main window", capture("WhatsApp", {},
+  () => [windowWithTitle("Dialog")]), { app: "WhatsApp", title: "Dialog" });
+
+let traversals = 0;
+const trackedWindow = whatsAppWindow(() => {
+  traversals++;
+  return [chatHeading("Alice")];
+});
+check("unrelated app title", capture("Terminal", {}, () => [trackedWindow]),
+  { app: "Terminal", title: "WhatsApp" });
+assert.strictEqual(traversals, 0, "unrelated apps must not traverse the AX tree");
+
+// OSAKit caches the compiled script. A second execution must not reuse a chat
+// name from a prior poll, including after the active chat disappears.
+let pollWindows = [whatsAppWindow([chatHeading("Alice")])];
+const proc = { displayedName: () => "WhatsApp", windows: () => pollWindows };
+const context = vm.createContext({
+  Application: () => ({ processes: { whose: () => [proc] } }),
+});
+check("cached script first poll", JSON.parse(vm.runInContext(source, context)),
+  { app: "WhatsApp", title: "Alice" });
+pollWindows = [whatsAppWindow([])];
+check("cached script clears chat", JSON.parse(vm.runInContext(source, context)),
+  { app: "WhatsApp", title: "WhatsApp" });
+pollWindows = [];
+check("cached script clears window", JSON.parse(vm.runInContext(source, context)),
+  { app: "WhatsApp", title: "No window" });
+
 console.log(`${cases} JXA control-flow cases passed`);
