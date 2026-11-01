@@ -35,6 +35,31 @@ def get_app_name(hwnd) -> Optional[str]:
     return os.path.basename(path)
 
 
+FRAME_HOST_APP = "applicationframehost.exe"
+
+
+def get_uwp_app_window(hwnd):
+    """Return the window of the UWP app hosted in a frame window, or None.
+
+    UWP apps (Settings, Calculator, ...) are drawn inside a frame window owned
+    by ApplicationFrameHost.exe. While the app is in the foreground, its real
+    window is a child of that frame, owned by the app's own process. For a
+    second or so after the app is activated the child may not be attached yet,
+    in which case None is returned.
+    """
+    _, host_pid = win32process.GetWindowThreadProcessId(hwnd)
+    children = []
+
+    def collect(child, _):
+        _, pid = win32process.GetWindowThreadProcessId(child)
+        if pid != host_pid:
+            children.append(child)
+        return True
+
+    win32gui.EnumChildWindows(hwnd, collect, None)
+    return children[0] if children else None
+
+
 def get_window_title(hwnd):
     return win32gui.GetWindowText(hwnd)
 
