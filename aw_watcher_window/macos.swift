@@ -208,9 +208,6 @@ encoder.dateEncodingStrategy = .custom({ date, encoder in
   try container.encode(dateString)
 })
 
-start()
-RunLoop.main.run()
-
 func compileExcludePattern(_ pattern: String) -> NSRegularExpression {
   do {
     return try NSRegularExpression(pattern: pattern, options: [.caseInsensitive])
@@ -995,3 +992,8 @@ func checkAccess() -> Bool {
   let accessEnabled = AXIsProcessTrustedWithOptions(options as CFDictionary?)
   return accessEnabled
 }
+
+// Keep this at the end: top-level globals such as heartbeatSender are only
+// initialized when execution reaches them, and the run loop never returns.
+start()
+RunLoop.main.run()
