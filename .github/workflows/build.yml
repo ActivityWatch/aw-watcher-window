@@ -20,7 +20,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        # Python 3.9 builds are unavailable on Ubuntu 26.04 (ubuntu-latest).
+        os: [ubuntu-24.04, windows-latest, macos-latest]
         python_version: [3.9]
     steps:
     - uses: actions/checkout@v4
@@ -80,7 +81,8 @@ jobs:
         path: dist/aw-watcher-window
 
   typecheck:
-    runs-on: ubuntu-latest
+    # Keep this aligned with the Linux test runner for Python 3.9 support.
+    runs-on: ubuntu-24.04
     steps:
     - uses: actions/checkout@v4
       with:
