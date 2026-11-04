@@ -1,4 +1,4 @@
-.PHONY: build test package clean
+.PHONY: build test test-swift package clean
 
 MACOSX_DEPLOYMENT_TARGET ?= 12.0
 
@@ -11,13 +11,24 @@ build:
 
 build-swift: aw_watcher_window/aw-watcher-window-macos
 
-aw_watcher_window/aw-watcher-window-macos: aw_watcher_window/macos.swift
+aw_watcher_window/aw-watcher-window-macos: aw_watcher_window/macos.swift aw_watcher_window/macos_state.swift
 	swiftc -target "$(shell uname -m)-apple-macosx$(MACOSX_DEPLOYMENT_TARGET)" $^ -o $@
 
 test:
 	poetry run aw-watcher-window --help  # Ensures that it at least starts
 	poetry run python -m pytest tests/
 	make typecheck
+	if [ "$(shell uname)" = "Darwin" ]; then \
+		make test-swift; \
+	fi
+
+test-swift:
+	tmpdir=$$(mktemp -d) && \
+	trap 'rm -rf "$$tmpdir"' EXIT && \
+	swiftc -target "$(shell uname -m)-apple-macosx$(MACOSX_DEPLOYMENT_TARGET)" \
+	  aw_watcher_window/macos_state.swift tests/macos_state_tests.swift \
+	  -o "$$tmpdir/macos-state-tests" && \
+	"$$tmpdir/macos-state-tests"
 
 typecheck:
 	poetry run mypy aw_watcher_window/ --ignore-missing-imports
