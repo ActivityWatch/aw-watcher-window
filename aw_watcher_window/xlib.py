@@ -6,10 +6,13 @@ import Xlib.display
 from Xlib import X
 from Xlib.xobject.drawable import Window
 
+from . import xauth
 from .exceptions import FatalError
 
 logger = logging.getLogger(__name__)
 
+# Must run before the first connection, which happens at import below.
+xauth.install()
 display = Xlib.display.Display()
 screen = display.screen()
 
