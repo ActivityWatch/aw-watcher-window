@@ -73,14 +73,14 @@ def parse_args():
         "--exclude-titles",
         dest="exclude_titles",
         nargs='+',
-        default=default_exclude_titles,
+        action="extend",
         help="Exclude window titles by regular expression. Can specify multiple times."
     )
     parser.add_argument(
         "--exclude-apps",
         dest="exclude_apps",
         nargs='+',
-        default=default_exclude_apps,
+        action="extend",
         help="Exclude apps/window classes by regular expression — matching windows are not logged at all."
     )
     parser.add_argument("--verbose", dest="verbose", action="store_true")
@@ -109,6 +109,12 @@ def parse_args():
         help="Disable Research Edition mode, even when enabled in the config file.",
     )
     parsed_args = parser.parse_args()
+    # The config values are applied here and not as argparse defaults, since
+    # "extend" would add the command line patterns to them instead of replacing them
+    if parsed_args.exclude_titles is None:
+        parsed_args.exclude_titles = default_exclude_titles
+    if parsed_args.exclude_apps is None:
+        parsed_args.exclude_apps = default_exclude_apps
     if isinstance(parsed_args.exclude_titles, str):
         parsed_args.exclude_titles = [parsed_args.exclude_titles]
     elif not isinstance(parsed_args.exclude_titles, list) or not all(

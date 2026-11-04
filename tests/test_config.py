@@ -295,6 +295,25 @@ def test_cli_exclude_titles_overrides_invalid_config(tmp_path, monkeypatch):
     assert config_module.parse_args().exclude_titles == ["Secret.*", "Private"]
 
 
+@pytest.mark.parametrize(
+    "flag,key",
+    [("--exclude-titles", "exclude_titles"), ("--exclude-apps", "exclude_apps")],
+)
+def test_exclude_flags_can_be_repeated(tmp_path, monkeypatch, flag, key):
+    _patch_config_dir(monkeypatch, tmp_path)
+    config_dir = tmp_path / "activitywatch" / "aw-watcher-window"
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "aw-watcher-window.toml").write_text(
+        f'[aw-watcher-window]\n{key} = ["From config"]\n'
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["aw-watcher-window", flag, "Bank", flag, "Password", "Secret"]
+    )
+
+    # Every occurrence counts, and the command line still replaces the config
+    assert getattr(config_module.parse_args(), key) == ["Bank", "Password", "Secret"]
+
+
 def test_exclude_apps_string_in_config_is_coerced_to_single_pattern(monkeypatch):
     """A bare string in config must not be iterated character-by-character.
 
