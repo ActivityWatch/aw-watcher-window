@@ -202,8 +202,9 @@ def _enable_basic_auth(client, user, password):
         # Proxies may decode escaped separators/dots before routing, so check
         # the decoded normalized path as well as Requests' URL normalization.
         target_path = posixpath.normpath(unquote(target.path))
-        return target_origin == server_origin and (
-            target_path == server_path or target_path.startswith(server_path + "/")
+        return target_origin == server_origin and all(
+            path == server_path or path.startswith(server_path + "/")
+            for path in (target.path, target_path)
         )
 
     def _wrap(orig):
