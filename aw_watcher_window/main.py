@@ -1,13 +1,14 @@
 import logging
 import multiprocessing
 import os
+import posixpath
 import re
 import signal
 import subprocess
 import sys
 from datetime import datetime, timezone
 from time import sleep
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from aw_client import ActivityWatchClient
 from aw_core.log import setup_logging
@@ -181,11 +182,14 @@ def _enable_basic_auth(client, user, password):
         server.hostname,
         server.port if server.port is not None else default_ports.get(server.scheme),
     )
-    server_path = server.path.rstrip("/")
+    server_path = posixpath.normpath(unquote(server.path or "/")).rstrip("/")
 
     def _matches_server(url):
         try:
-            target = urlsplit(str(url))
+            # Check the URL Requests will send, not a raw path containing '..'.
+            prepared = aw_client_client.req.PreparedRequest()
+            prepared.prepare_url(url, None)
+            target = urlsplit(prepared.url)
             target_origin = (
                 target.scheme,
                 target.hostname,
@@ -193,10 +197,13 @@ def _enable_basic_auth(client, user, password):
                 if target.port is not None
                 else default_ports.get(target.scheme),
             )
-        except ValueError:
+        except (ValueError, aw_client_client.req.exceptions.RequestException):
             return False
+        # Proxies may decode escaped separators/dots before routing, so check
+        # the decoded normalized path as well as Requests' URL normalization.
+        target_path = posixpath.normpath(unquote(target.path))
         return target_origin == server_origin and (
-            target.path == server_path or target.path.startswith(server_path + "/")
+            target_path == server_path or target_path.startswith(server_path + "/")
         )
 
     def _wrap(orig):

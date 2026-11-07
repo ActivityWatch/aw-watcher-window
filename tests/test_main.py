@@ -858,6 +858,9 @@ def test_enable_basic_auth_adds_auth_and_keeps_other_kwargs(monkeypatch):
         ("http://aw.example.com/aw/", "http://aw.example.com/aw/api/0/info", True),
         ("http://aw.example.com/aw/", "http://aw.example.com/aw", True),
         ("http://aw.example.com/aw/", "http://aw.example.com/aw-other/api/0/info", False),
+        ("http://aw.example.com/aw/", "http://aw.example.com/aw/../other-service/", False),
+        ("http://aw.example.com/aw/", "http://aw.example.com/aw/%2e%2e/other-service/", False),
+        ("http://aw.example.com/aw/", "http://aw.example.com/aw/..%2fother-service/", False),
         ("http://aw.example.com", "http://aw.example.com:bad/api/0/info", False),
     ],
 )
