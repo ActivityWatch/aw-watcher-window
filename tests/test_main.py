@@ -840,6 +840,48 @@ def test_enable_basic_auth_adds_auth_and_keeps_other_kwargs(monkeypatch):
     assert "auth" not in other["kwargs"]
 
 
+@pytest.mark.parametrize("method", ["get", "post", "delete"])
+@pytest.mark.parametrize(
+    "server_address,url,expected_auth",
+    [
+        ("http://aw.example.com:5601", "http://aw.example.com:5601/api/0/info", True),
+        ("http://aw.example.com:5601", "http://aw.example.com:56010/api/0/info", False),
+        ("http://aw.example.com:5601", "http://aw.example.com:5601@evil.example/info", False),
+        ("http://aw.example.com:5601", "https://aw.example.com:5601/api/0/info", False),
+        ("http://aw.example.com", "http://aw.example.com.evil.example/api/0/info", False),
+        ("http://aw.example.com", "http://AW.EXAMPLE.COM:80/api/0/info", True),
+        ("https://aw.example.com:443", "https://aw.example.com/api/0/info", True),
+        ("http://[::1]:5601", "http://[::1]:56010/api/0/info", False),
+        ("http://[::1]:5601", "http://[::1]:5601/api/0/info", True),
+        ("http://aw.example.com/aw/", "http://aw.example.com/aw/api/0/info", True),
+        ("http://aw.example.com/aw/", "http://aw.example.com/aw", True),
+        ("http://aw.example.com/aw/", "http://aw.example.com/aw-other/api/0/info", False),
+        ("http://aw.example.com", "http://aw.example.com:bad/api/0/info", False),
+    ],
+)
+def test_enable_basic_auth_scopes_credentials_to_server(
+    monkeypatch, method, server_address, url, expected_auth
+):
+    import aw_client.client as aw_client_client
+
+    captured = []
+    for name in ("get", "post", "delete"):
+        monkeypatch.setattr(
+            aw_client_client.req,
+            name,
+            lambda url, **kwargs: captured.append(kwargs),
+        )
+    client = SimpleNamespace(server_address=server_address, server_api_key=None)
+
+    main_module._enable_basic_auth(client, "alice", "secret")
+    getattr(aw_client_client.req, method)(url, timeout=5)
+
+    expected = {"timeout": 5}
+    if expected_auth:
+        expected["auth"] = ("alice", "secret")
+    assert captured == [expected]
+
+
 def test_enable_basic_auth_rejects_api_key_conflict():
     client = SimpleNamespace(
         server_address="http://localhost:5600",

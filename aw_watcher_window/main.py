@@ -7,6 +7,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from time import sleep
+from urllib.parse import urlsplit
 
 from aw_client import ActivityWatchClient
 from aw_core.log import setup_logging
@@ -173,14 +174,37 @@ def _enable_basic_auth(client, user, password):
     import aw_client.client as aw_client_client
 
     auth = (user, password)
-    prefix = client.server_address.rstrip("/")
+    server = urlsplit(client.server_address)
+    default_ports = {"http": 80, "https": 443}
+    server_origin = (
+        server.scheme,
+        server.hostname,
+        server.port if server.port is not None else default_ports.get(server.scheme),
+    )
+    server_path = server.path.rstrip("/")
+
+    def _matches_server(url):
+        try:
+            target = urlsplit(str(url))
+            target_origin = (
+                target.scheme,
+                target.hostname,
+                target.port
+                if target.port is not None
+                else default_ports.get(target.scheme),
+            )
+        except ValueError:
+            return False
+        return target_origin == server_origin and (
+            target.path == server_path or target.path.startswith(server_path + "/")
+        )
 
     def _wrap(orig):
         if getattr(orig, "_aw_basic_auth", False):
             return orig
 
         def wrapped(url, *args, **kwargs):
-            if str(url).startswith(prefix):
+            if _matches_server(url):
                 kwargs.setdefault("auth", auth)
             return orig(url, *args, **kwargs)
 
