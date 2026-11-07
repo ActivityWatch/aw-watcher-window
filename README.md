@@ -54,13 +54,19 @@ pattern = "(?i)signal|whatsapp"
 field   = "app"            # optional; defaults to "title"
 action  = "drop"
 
-# Rewrite only Firefox titles: strip the browser suffix and unread counters
-# while leaving the rest of the title readable
+# Rewrite only Firefox titles: strip the browser suffix and trailing unread
+# counters, then leading counters; preserve numbers in the middle of a title
 [[aw-watcher-window.privacy_filter]]
-pattern     = "( - Mozilla Firefox|\\(\\d+\\+?\\)\\s*)"
+pattern     = "(\\s*\\(\\d+\\+?\\)|\\s*- Mozilla Firefox)+$"
 action      = "rewrite"
 replacement = ""
 app         = "firefox"    # optional; restricts the rule to one application
+
+[[aw-watcher-window.privacy_filter]]
+pattern     = "^(\\(\\d+\\+?\\)\\s*)+"
+action      = "rewrite"
+replacement = ""
+app         = "firefox"
 ```
 
 Rule fields:

@@ -1,4 +1,4 @@
-"""
+r"""
 Watcher-side privacy filter: drop or redact sensitive events before sending.
 
 Mirrors the server-side ``privacy_filters`` engine in aw-server-rust so that
@@ -19,9 +19,16 @@ Configure rules in ``~/.config/activitywatch/aw-watcher-window/aw-watcher-window
    action      = "redact"
    replacement = "REDACTED"   # optional; defaults to "excluded"
 
-   # Rewrite only Firefox titles, stripping the browser suffix and unread counters
+   # Rewrite only Firefox titles: strip the browser suffix and trailing unread
+   # counters, then leading counters; preserve numbers in the middle of a title
    [[aw-watcher-window.privacy_filter]]
-   pattern     = "( - Mozilla Firefox|\\(\\d+\\+?\\)\\s*)"
+   pattern     = "(\\s*\\(\\d+\\+?\\)|\\s*- Mozilla Firefox)+$"
+   action      = "rewrite"
+   replacement = ""
+   app         = "firefox"
+
+   [[aw-watcher-window.privacy_filter]]
+   pattern     = "^(\\(\\d+\\+?\\)\\s*)+"
    action      = "rewrite"
    replacement = ""
    app         = "firefox"

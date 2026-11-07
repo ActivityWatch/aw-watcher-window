@@ -1,7 +1,12 @@
 """Tests for the watcher-side privacy filter."""
 
-import pytest
+from pathlib import Path
+from textwrap import dedent
 
+import pytest
+import tomlkit
+
+from aw_watcher_window import privacy_filter
 from aw_watcher_window.privacy_filter import apply_privacy_filters, compile_privacy_rules
 
 
@@ -236,6 +241,38 @@ def test_compile_rewrite_rule():
     assert rules[0]["action"] == "rewrite"
     assert rules[0]["replacement"] == ""
     assert rules[0]["app"] is None
+
+
+@pytest.mark.parametrize("source", ["readme", "module"])
+@pytest.mark.parametrize(
+    "title, expected",
+    [
+        ("Inbox (3) - Mozilla Firefox", "Inbox"),
+        ("(3) Inbox - Mozilla Firefox", "Inbox"),
+        ("(3+) Inbox (12) - Mozilla Firefox", "Inbox"),
+        ("Inbox - Mozilla Firefox", "Inbox"),
+        ("Chapter (3) notes - Mozilla Firefox", "Chapter (3) notes"),
+    ],
+)
+def test_documented_rewrite_rules(source, title, expected):
+    # Load the actual examples so regex copies in tests cannot mask doc drift.
+    if source == "readme":
+        text = (Path(__file__).resolve().parents[1] / "README.md").read_text()
+        example = text.split("# Rewrite only Firefox titles", 1)[1].split("```", 1)[0]
+    else:
+        text = privacy_filter.__doc__
+        example = dedent(
+            text.split("# Rewrite only Firefox titles", 1)[1].split("Rule fields:", 1)[0]
+        )
+    example = example.split("\n", 1)[1]
+    raw = tomlkit.parse(example)["aw-watcher-window"]["privacy_filter"]
+    rules = compile_privacy_rules(raw)
+    assert rules
+    window = {"app": "Firefox", "title": title}
+    assert apply_privacy_filters(window, rules) == {"app": "Firefox", "title": expected}
+    other_app = {"app": "Terminal", "title": title}
+    assert apply_privacy_filters(other_app, rules) == other_app
+    assert window["title"] == title
 
 
 def test_compile_rewrite_requires_replacement():
