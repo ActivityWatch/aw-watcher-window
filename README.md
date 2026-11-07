@@ -53,13 +53,22 @@ replacement = "REDACTED"   # optional; defaults to "excluded"
 pattern = "(?i)signal|whatsapp"
 field   = "app"            # optional; defaults to "title"
 action  = "drop"
+
+# Rewrite only Firefox titles: strip the browser suffix and unread counters
+# while leaving the rest of the title readable
+[[aw-watcher-window.privacy_filter]]
+pattern     = "( - Mozilla Firefox|\\(\\d+\\+?\\)\\s*)$"
+action      = "rewrite"
+replacement = ""
+app         = "firefox"    # optional; restricts the rule to one application
 ```
 
 Rule fields:
 - `pattern` — Python `re` regex (case-insensitive flag supported via `(?i)`)
 - `field` — window-event field to match against (`"title"` by default; use `"app"` to match on application name)
-- `action` — `"drop"` (discard the event) or `"redact"` (replace the field value)
-- `replacement` — string to use when redacting; defaults to `"excluded"`
+- `action` — `"drop"` (discard the event), `"redact"` (replace the field value) or `"rewrite"` (apply `pattern.sub(replacement, value)` so the rest of the value survives)
+- `replacement` — string to use when redacting (defaults to `"excluded"`); required, and may be empty, for `"rewrite"`
+- `app` — optional application scope: the rule only applies to events whose `app` matches (case-insensitive)
 
 Rules are applied in order. A `"drop"` rule exits immediately — subsequent rules are not evaluated for that event.
 
