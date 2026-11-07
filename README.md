@@ -57,7 +57,7 @@ action  = "drop"
 # Rewrite only Firefox titles: strip the browser suffix and unread counters
 # while leaving the rest of the title readable
 [[aw-watcher-window.privacy_filter]]
-pattern     = "( - Mozilla Firefox|\\(\\d+\\+?\\)\\s*)$"
+pattern     = "( - Mozilla Firefox|\\(\\d+\\+?\\)\\s*)"
 action      = "rewrite"
 replacement = ""
 app         = "firefox"    # optional; restricts the rule to one application

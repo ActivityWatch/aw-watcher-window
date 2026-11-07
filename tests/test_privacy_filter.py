@@ -244,6 +244,38 @@ def test_compile_rewrite_requires_replacement():
     assert compile_privacy_rules([{"pattern": "x", "action": "rewrite"}]) == []
 
 
+def test_compile_rewrite_rejects_invalid_replacement():
+    # A dangling group reference raises inside re.sub at match time, which would
+    # abort heartbeat collection; it must be rejected at compile time instead.
+    assert (
+        compile_privacy_rules(
+            [{"pattern": "(secret)", "action": "rewrite", "replacement": r"\9"}]
+        )
+        == []
+    )
+
+
+def test_rewrite_accepts_group_backreference():
+    rules = compile_privacy_rules(
+        [{"pattern": r"^(.+) - Mozilla Firefox$", "action": "rewrite", "replacement": r"\1"}]
+    )
+    window = {"app": "Firefox", "title": "GitHub - Mozilla Firefox"}
+    result = apply_privacy_filters(window, rules)
+    assert result is not None
+    assert result["title"] == "GitHub"
+
+
+def test_rewrite_strips_leading_and_trailing_counters():
+    rules = compile_privacy_rules(
+        [{"pattern": r"\(\d+\+?\)\s*", "action": "rewrite", "replacement": ""}]
+    )
+    window = {"app": "Thunderbird", "title": "(3) Inbox - work (12)"}
+    result = apply_privacy_filters(window, rules)
+    assert result is not None
+    # Trailing whitespace is the rule author's choice; the counters are gone.
+    assert result["title"].strip() == "Inbox - work"
+
+
 def test_compile_rewrite_rejects_bad_app():
     assert (
         compile_privacy_rules(

@@ -21,7 +21,7 @@ Configure rules in ``~/.config/activitywatch/aw-watcher-window/aw-watcher-window
 
    # Rewrite only Firefox titles, stripping the browser suffix and unread counters
    [[aw-watcher-window.privacy_filter]]
-   pattern     = "( - Mozilla Firefox|\\(\\d+\\+?\\)\\s*)$"
+   pattern     = "( - Mozilla Firefox|\\(\\d+\\+?\\)\\s*)"
    action      = "rewrite"
    replacement = ""
    app         = "firefox"
@@ -111,6 +111,20 @@ def compile_privacy_rules(raw_rules: list) -> list:
                     "privacy_filter: 'rewrite' action requires a string "
                     "'replacement' (may be empty) — rule skipped: %r",
                     raw,
+                )
+                continue
+            # A bad group reference or escape raises inside re.sub at match
+            # time, i.e. in the heartbeat loop — validate it here so a malformed
+            # rule is skipped instead of stopping window tracking.
+            try:
+                pattern.sub(replacement, "")
+            except (re.error, IndexError) as exc:
+                logger.error(
+                    "privacy_filter: invalid 'rewrite' replacement %r for %r — "
+                    "%s — rule skipped",
+                    replacement,
+                    pattern_str,
+                    exc,
                 )
                 continue
         else:
