@@ -200,15 +200,27 @@ def _enable_basic_auth(client, user, password):
         )
 
     def _wrap(orig):
-        if getattr(orig, "_aw_basic_auth", False):
-            return orig
+        # Replace our previous wrapper rather than retaining stale credentials
+        # or stacking wrappers that could authenticate the previous server.
+        orig = getattr(orig, "_aw_basic_auth_original", orig)
 
         def wrapped(url, *args, **kwargs):
-            if _matches_server(url):
-                kwargs.setdefault("auth", auth)
-            return orig(url, *args, **kwargs)
+            if not _matches_server(url):
+                return orig(url, *args, **kwargs)
+            kwargs.setdefault("auth", auth)
+            # Requests retains Authorization on same-origin redirects, even
+            # outside server_path. Refuse redirects instead of forwarding
+            # credentials (or silently treating a redirected write as success).
+            kwargs["allow_redirects"] = False
+            response = orig(url, *args, **kwargs)
+            if response.is_redirect:
+                raise aw_client_client.req.exceptions.TooManyRedirects(
+                    "HTTP Basic Auth refuses redirects; configure the final server address",
+                    response=response,
+                )
+            return response
 
-        wrapped._aw_basic_auth = True
+        wrapped._aw_basic_auth_original = orig
         return wrapped
 
     for name in ("get", "post", "delete"):

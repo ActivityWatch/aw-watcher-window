@@ -806,6 +806,8 @@ def test_enable_basic_auth_adds_auth_and_keeps_other_kwargs(monkeypatch):
         )
 
         class Response:
+            is_redirect = False
+
             def raise_for_status(self):
                 return None
 
@@ -869,7 +871,7 @@ def test_enable_basic_auth_scopes_credentials_to_server(
         monkeypatch.setattr(
             aw_client_client.req,
             name,
-            lambda url, **kwargs: captured.append(kwargs),
+            lambda url, **kwargs: captured.append(kwargs) or SimpleNamespace(is_redirect=False),
         )
     client = SimpleNamespace(server_address=server_address, server_api_key=None)
 
@@ -879,7 +881,74 @@ def test_enable_basic_auth_scopes_credentials_to_server(
     expected = {"timeout": 5}
     if expected_auth:
         expected["auth"] = ("alice", "secret")
+        expected["allow_redirects"] = False
     assert captured == [expected]
+
+
+@pytest.mark.parametrize("method", ["get", "post", "delete"])
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+def test_basic_auth_refuses_redirects(monkeypatch, method, status):
+    import requests
+    import aw_client.client as aw_client_client
+
+    sent = []
+
+    class RedirectAdapter(requests.adapters.BaseAdapter):
+        def send(self, request, **kwargs):
+            sent.append(request)
+            response = requests.Response()
+            response.request = request
+            response.url = request.url
+            response.status_code = status if len(sent) == 1 else 200
+            response.headers["Location"] = "/other-service/"
+            response._content = b""
+            return response
+
+        def close(self):
+            pass
+
+    # Exercise Requests' real redirect handling without a network connection.
+    session = requests.Session()
+    session.trust_env = False
+    session.mount("http://", RedirectAdapter())
+    monkeypatch.setattr(requests.sessions, "Session", lambda: session)
+    for name in ("get", "post", "delete"):
+        monkeypatch.setattr(aw_client_client.req, name, getattr(aw_client_client.req, name))
+    client = SimpleNamespace(server_address="http://aw.example.com/aw/", server_api_key=None)
+    main_module._enable_basic_auth(client, "alice", "secret")
+
+    # An explicit True must not bypass the credential boundary either.
+    with pytest.raises(requests.exceptions.TooManyRedirects):
+        getattr(aw_client_client.req, method)(
+            "http://aw.example.com/aw/start", allow_redirects=True
+        )
+
+    assert len(sent) == 1
+    assert sent[0].headers["Authorization"] == requests.auth._basic_auth_str("alice", "secret")
+
+
+@pytest.mark.parametrize("method", ["get", "post", "delete"])
+@pytest.mark.parametrize("second_server", ["http://aw.example.com", "http://other.example"])
+def test_basic_auth_reconfiguration_replaces_old_credentials(monkeypatch, method, second_server):
+    import aw_client.client as aw_client_client
+
+    captured = []
+
+    def request(url, **kwargs):
+        captured.append((url, kwargs))
+        return SimpleNamespace(is_redirect=False)
+
+    for name in ("get", "post", "delete"):
+        monkeypatch.setattr(aw_client_client.req, name, request)
+    client = SimpleNamespace(server_address="http://aw.example.com", server_api_key=None)
+    main_module._enable_basic_auth(client, "alice", "old")
+    client.server_address = second_server
+    main_module._enable_basic_auth(client, "bob", "new")
+    getattr(aw_client_client.req, method)(second_server + "/api/0/info")
+    assert captured[-1][1]["auth"] == ("bob", "new")
+    if second_server != "http://aw.example.com":
+        getattr(aw_client_client.req, method)("http://aw.example.com/api/0/info")
+        assert "auth" not in captured[-1][1]
 
 
 def test_enable_basic_auth_rejects_api_key_conflict():
