@@ -1,7 +1,12 @@
 """Tests for the watcher-side privacy filter."""
 
-import pytest
+from pathlib import Path
+from textwrap import dedent
 
+import pytest
+import tomlkit
+
+from aw_watcher_window import privacy_filter
 from aw_watcher_window.privacy_filter import apply_privacy_filters, compile_privacy_rules
 
 
@@ -207,3 +212,173 @@ def test_custom_field_does_not_affect_title():
     window = {"app": "Terminal", "title": "messenger in title"}
     # app doesn't match; rule scoped to 'app' field
     assert apply_privacy_filters(window, rules) == window
+
+
+# ---------------------------------------------------------------------------
+# rewrite action (alternative to redact, for partial title cleanup)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def rewrite_rule():
+    return compile_privacy_rules(
+        [
+            {
+                "pattern": r" - Mozilla Firefox$",
+                "action": "rewrite",
+                "replacement": "",
+                "app": "Firefox",
+            }
+        ]
+    )
+
+
+def test_compile_rewrite_rule():
+    rules = compile_privacy_rules(
+        [{"pattern": r"\(\d+\)\s*", "action": "rewrite", "replacement": ""}]
+    )
+    assert len(rules) == 1
+    assert rules[0]["action"] == "rewrite"
+    assert rules[0]["replacement"] == ""
+    assert rules[0]["app"] is None
+
+
+@pytest.mark.parametrize("source", ["readme", "module"])
+@pytest.mark.parametrize(
+    "title, expected",
+    [
+        ("Inbox (3) - Mozilla Firefox", "Inbox"),
+        ("(3) Inbox - Mozilla Firefox", "Inbox"),
+        ("(3+) Inbox (12) - Mozilla Firefox", "Inbox"),
+        ("Inbox - Mozilla Firefox", "Inbox"),
+        ("Chapter (3) notes - Mozilla Firefox", "Chapter (3) notes"),
+    ],
+)
+def test_documented_rewrite_rules(source, title, expected):
+    # Load the actual examples so regex copies in tests cannot mask doc drift.
+    if source == "readme":
+        text = (Path(__file__).resolve().parents[1] / "README.md").read_text()
+        example = text.split("# Rewrite only Firefox titles", 1)[1].split("```", 1)[0]
+    else:
+        text = privacy_filter.__doc__
+        example = dedent(
+            text.split("# Rewrite only Firefox titles", 1)[1].split("Rule fields:", 1)[0]
+        )
+    example = example.split("\n", 1)[1]
+    raw = tomlkit.parse(example)["aw-watcher-window"]["privacy_filter"]
+    rules = compile_privacy_rules(raw)
+    assert rules
+    window = {"app": "Firefox", "title": title}
+    assert apply_privacy_filters(window, rules) == {"app": "Firefox", "title": expected}
+    other_app = {"app": "Terminal", "title": title}
+    assert apply_privacy_filters(other_app, rules) == other_app
+    assert window["title"] == title
+
+
+def test_compile_rewrite_requires_replacement():
+    # "excluded" would delete the matched text instead of substituting it, so a
+    # rewrite with no explicit replacement is rejected rather than defaulted.
+    assert compile_privacy_rules([{"pattern": "x", "action": "rewrite"}]) == []
+
+
+def test_compile_rewrite_rejects_invalid_replacement():
+    # A dangling group reference raises inside re.sub at match time, which would
+    # abort heartbeat collection; it must be rejected at compile time instead.
+    assert (
+        compile_privacy_rules(
+            [{"pattern": "(secret)", "action": "rewrite", "replacement": r"\9"}]
+        )
+        == []
+    )
+
+
+def test_rewrite_accepts_group_backreference():
+    rules = compile_privacy_rules(
+        [{"pattern": r"^(.+) - Mozilla Firefox$", "action": "rewrite", "replacement": r"\1"}]
+    )
+    window = {"app": "Firefox", "title": "GitHub - Mozilla Firefox"}
+    result = apply_privacy_filters(window, rules)
+    assert result is not None
+    assert result["title"] == "GitHub"
+
+
+def test_rewrite_strips_leading_and_trailing_counters():
+    rules = compile_privacy_rules(
+        [{"pattern": r"\(\d+\+?\)\s*", "action": "rewrite", "replacement": ""}]
+    )
+    window = {"app": "Thunderbird", "title": "(3) Inbox - work (12)"}
+    result = apply_privacy_filters(window, rules)
+    assert result is not None
+    # Trailing whitespace is the rule author's choice; the counters are gone.
+    assert result["title"].strip() == "Inbox - work"
+
+
+def test_compile_rewrite_rejects_bad_app():
+    assert (
+        compile_privacy_rules(
+            [{"pattern": "x", "action": "rewrite", "replacement": "", "app": 3}]
+        )
+        == []
+    )
+
+
+def test_rewrite_replaces_only_the_match(rewrite_rule):
+    window = {"app": "Firefox", "title": "GitHub - Mozilla Firefox"}
+    result = apply_privacy_filters(window, rewrite_rule)
+    assert result is not None
+    assert result["title"] == "GitHub"
+    assert result["app"] == "Firefox"
+
+
+def test_rewrite_strips_unread_counter():
+    rules = compile_privacy_rules(
+        [{"pattern": r"^\(\d+\+?\)\s*", "action": "rewrite", "replacement": ""}]
+    )
+    window = {"app": "Thunderbird", "title": "(3) Inbox - work"}
+    result = apply_privacy_filters(window, rules)
+    assert result is not None
+    assert result["title"] == "Inbox - work"
+
+
+def test_rewrite_respects_app_scope(rewrite_rule):
+    window = {"app": "Chromium", "title": "GitHub - Mozilla Firefox"}
+    result = apply_privacy_filters(window, rewrite_rule)
+    assert result == window
+
+
+def test_rewrite_app_scope_is_case_insensitive(rewrite_rule):
+    window = {"app": "firefox", "title": "Docs - Mozilla Firefox"}
+    result = apply_privacy_filters(window, rewrite_rule)
+    assert result is not None
+    assert result["title"] == "Docs"
+
+
+def test_rewrite_without_app_scope_applies_everywhere():
+    rules = compile_privacy_rules(
+        [{"pattern": r" - Mozilla Firefox$", "action": "rewrite", "replacement": ""}]
+    )
+    window = {"app": "Chromium", "title": "Docs - Mozilla Firefox"}
+    result = apply_privacy_filters(window, rules)
+    assert result is not None
+    assert result["title"] == "Docs"
+
+
+def test_rewrite_non_matching_passes_through(rewrite_rule):
+    window = {"app": "Firefox", "title": "Hacker News"}
+    assert apply_privacy_filters(window, rewrite_rule) == window
+
+
+def test_rewrite_never_drops_or_redacts():
+    rules = compile_privacy_rules(
+        [{"pattern": "bank", "action": "rewrite", "replacement": "BANK"}]
+    )
+    window = {"app": "Chrome", "title": "bank statement"}
+    result = apply_privacy_filters(window, rules)
+    assert result is not None
+    assert result["title"] == "BANK statement"
+
+
+def test_rewrite_input_not_mutated(rewrite_rule):
+    window = {"app": "Firefox", "title": "GitHub - Mozilla Firefox"}
+    apply_privacy_filters(window, rewrite_rule)
+    assert window["title"] == "GitHub - Mozilla Firefox"
