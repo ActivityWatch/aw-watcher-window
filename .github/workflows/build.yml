@@ -74,11 +74,19 @@ jobs:
       shell: bash
       run: |
           dist/aw-watcher-window/aw-watcher-window --help
+    - name: Archive package
+      # upload-artifact flattens symlinks and drops exec bits. On macOS the
+      # bundle's Python.framework (Versions/Current, top-level Python) is
+      # built from symlinks; uploaded raw it arrives as four copies of the
+      # Python library and an invalid framework layout. A tarball keeps the
+      # layout intact (same fix as ActivityWatch/aw-qt#151).
+      shell: bash
+      run: tar -czf dist/aw-watcher-window.tar.gz -C dist aw-watcher-window
     - name: Upload package
       uses: actions/upload-artifact@v4
       with:
         name: aw-watcher-window-${{ runner.os }}-py${{ matrix.python_version }}
-        path: dist/aw-watcher-window
+        path: dist/aw-watcher-window.tar.gz
 
   typecheck:
     # Keep this aligned with the Linux test runner for Python 3.9 support.
