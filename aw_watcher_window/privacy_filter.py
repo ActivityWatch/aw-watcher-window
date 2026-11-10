@@ -1,4 +1,4 @@
-"""
+r"""
 Watcher-side privacy filter: drop or redact sensitive events before sending.
 
 Mirrors the server-side ``privacy_filters`` engine in aw-server-rust so that
@@ -19,11 +19,30 @@ Configure rules in ``~/.config/activitywatch/aw-watcher-window/aw-watcher-window
    action      = "redact"
    replacement = "REDACTED"   # optional; defaults to "excluded"
 
+   # Rewrite only Firefox titles: strip the browser suffix and trailing unread
+   # counters, then leading counters; preserve numbers in the middle of a title
+   [[aw-watcher-window.privacy_filter]]
+   pattern     = "(\\s*\\(\\d+\\+?\\)|\\s*- Mozilla Firefox)+$"
+   action      = "rewrite"
+   replacement = ""
+   app         = "firefox"
+
+   [[aw-watcher-window.privacy_filter]]
+   pattern     = "^(\\(\\d+\\+?\\)\\s*)+"
+   action      = "rewrite"
+   replacement = ""
+   app         = "firefox"
+
 Rule fields:
   pattern     -- Python ``re`` regex applied to the target field value.
   field       -- Window-event field to match against (default: ``"title"``).
-  action      -- ``"drop"`` (discard the event) or ``"redact"`` (replace the value).
-  replacement -- Replacement string for ``"redact"`` action (default: ``"excluded"``).
+  action      -- ``"drop"`` (discard the event), ``"redact"`` (replace the whole
+                 value) or ``"rewrite"`` (apply ``pattern.sub(replacement, value)``
+                 so the rest of the value survives).
+  replacement -- Replacement string for ``"redact"`` (default: ``"excluded"``).
+                 Required and may be empty for ``"rewrite"``.
+  app         -- Optional application scope: the rule only touches events whose
+                 ``app`` field matches exactly (case-insensitive).
 
 macOS note: the default ``swift`` strategy cannot apply these rules (it
 sends heartbeats from a separate binary). The watcher refuses to start
@@ -37,7 +56,7 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-_VALID_ACTIONS = frozenset({"drop", "redact"})
+_VALID_ACTIONS = frozenset({"drop", "redact", "rewrite"})
 
 
 def compile_privacy_rules(raw_rules: list) -> list:
@@ -68,8 +87,17 @@ def compile_privacy_rules(raw_rules: list) -> list:
         action = raw.get("action", "redact")
         if action not in _VALID_ACTIONS:
             logger.error(
-                "privacy_filter: unknown action %r (expected 'drop' or 'redact') — rule skipped",
+                "privacy_filter: unknown action %r (expected one of %s) — rule skipped",
                 action,
+                "/".join(sorted(_VALID_ACTIONS)),
+            )
+            continue
+
+        app = raw.get("app")
+        if app is not None and (not isinstance(app, str) or not app):
+            logger.error(
+                "privacy_filter: 'app' must be a non-empty string — rule skipped: %r",
+                raw,
             )
             continue
 
@@ -81,13 +109,39 @@ def compile_privacy_rules(raw_rules: list) -> list:
             )
             continue
 
-        replacement = raw.get("replacement", "excluded")
-        if not isinstance(replacement, str):
-            logger.error(
-                "privacy_filter: 'replacement' must be a string — rule skipped: %r",
-                raw,
-            )
-            continue
+        if action == "rewrite":
+            # A rewrite must be explicit: the "excluded" default would delete
+            # the matched value instead of substituting it.
+            replacement = raw.get("replacement")
+            if not isinstance(replacement, str):
+                logger.error(
+                    "privacy_filter: 'rewrite' action requires a string "
+                    "'replacement' (may be empty) — rule skipped: %r",
+                    raw,
+                )
+                continue
+            # A bad group reference or escape raises inside re.sub at match
+            # time, i.e. in the heartbeat loop — validate it here so a malformed
+            # rule is skipped instead of stopping window tracking.
+            try:
+                pattern.sub(replacement, "")
+            except (re.error, IndexError) as exc:
+                logger.error(
+                    "privacy_filter: invalid 'rewrite' replacement %r for %r — "
+                    "%s — rule skipped",
+                    replacement,
+                    pattern_str,
+                    exc,
+                )
+                continue
+        else:
+            replacement = raw.get("replacement", "excluded")
+            if not isinstance(replacement, str):
+                logger.error(
+                    "privacy_filter: 'replacement' must be a string — rule skipped: %r",
+                    raw,
+                )
+                continue
 
         compiled.append(
             {
@@ -95,6 +149,7 @@ def compile_privacy_rules(raw_rules: list) -> list:
                 "field": field,
                 "action": action,
                 "replacement": replacement,
+                "app": app,
             }
         )
     return compiled
@@ -114,6 +169,20 @@ def apply_privacy_filters(window: dict, rules: list) -> Optional[dict]:
         field = rule["field"]
         value = result.get(field)
         if not isinstance(value, str):
+            continue
+        app = rule.get("app")
+        if app is not None:
+            event_app = result.get("app")
+            if not isinstance(event_app, str) or event_app.lower() != app.lower():
+                continue
+        if rule["action"] == "rewrite":
+            if rule["pattern"].search(value):
+                logger.debug(
+                    "privacy_filter: rewriting field=%r matched %r",
+                    field,
+                    rule["pattern"].pattern,
+                )
+                result[field] = rule["pattern"].sub(rule["replacement"], value)
             continue
         if rule["pattern"].search(value):
             if rule["action"] == "drop":
