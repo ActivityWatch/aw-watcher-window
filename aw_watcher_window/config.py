@@ -56,6 +56,8 @@ def parse_args():
         default_exclude_apps = [default_exclude_apps]
     default_strategy_macos = config["strategy_macos"]
     default_research_enabled = config.get("research_enabled", False)
+    default_auth_user = config.get("auth_user") or ""
+    default_auth_password = config.get("auth_password")
 
     parser = argparse.ArgumentParser(
         description="A cross platform window watcher for Activitywatch.\nSupported on: Linux (X11), macOS and Windows."
@@ -63,6 +65,21 @@ def parse_args():
     parser.add_argument("--host", dest="host")
     parser.add_argument("--port", dest="port")
     parser.add_argument("--testing", dest="testing", action="store_true")
+    parser.add_argument(
+        "--auth-user",
+        dest="auth_user",
+        default=default_auth_user,
+        help="Username for HTTP Basic Auth (nginx auth_basic reverse proxies)",
+    )
+    parser.add_argument(
+        "--auth-password",
+        dest="auth_password",
+        default=default_auth_password,
+        help=(
+            "Password for HTTP Basic Auth. Prefer the config file; a CLI value "
+            "is visible in the process list."
+        ),
+    )
     parser.add_argument(
         "--exclude-title",
         dest="exclude_title",

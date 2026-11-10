@@ -640,6 +640,337 @@ def test_swift_strategy_propagates_helper_crash(monkeypatch):
     assert exc.value.code == 134
 
 
+@pytest.mark.parametrize(
+    "user,password,expected",
+    [
+        ("alice", "secret", True),
+        ("alice", "", True),
+        ("alice", None, False),
+        (None, "secret", False),
+        ("", "secret", False),
+    ],
+)
+def test_auth_configured(user, password, expected):
+    args = SimpleNamespace(auth_user=user, auth_password=password)
+    assert main_module._auth_configured(args) is expected
+
+
+def test_basic_auth_test_restores_all_request_methods(monkeypatch):
+    import aw_client.client as aw_client_client
+
+    originals = {
+        name: getattr(aw_client_client.req, name) for name in ("get", "post", "delete")
+    }
+    with monkeypatch.context() as patch:
+        test_enable_basic_auth_adds_auth_and_keeps_other_kwargs(patch)
+    for name, original in originals.items():
+        assert getattr(aw_client_client.req, name) is original
+
+
+@pytest.mark.parametrize("password", ["secret", ""])
+def test_swift_refuses_to_start_when_basic_auth_configured(monkeypatch, password):
+    commands = []
+
+    class FakeProcess:
+        pid = 123
+
+        def wait(self):
+            return None
+
+    class FakeClient:
+        client_name = "aw-watcher-window"
+        client_hostname = "host.localdomain"
+        server_address = "http://localhost:5600"
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def create_bucket(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(main_module.sys, "platform", "darwin")
+    monkeypatch.setattr(main_module, "background_ensure_permissions", lambda: None)
+    monkeypatch.setattr(main_module, "setup_logging", lambda **kwargs: None)
+    monkeypatch.setattr(main_module, "ActivityWatchClient", FakeClient)
+    monkeypatch.setattr(main_module.signal, "signal", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        main_module.subprocess,
+        "Popen",
+        lambda command: commands.append(command) or FakeProcess(),
+    )
+    monkeypatch.setattr(
+        main_module,
+        "parse_args",
+        lambda: SimpleNamespace(
+            testing=True,
+            verbose=False,
+            host=None,
+            port=None,
+            strategy="swift",
+            exclude_title=False,
+            exclude_titles=[],
+            exclude_apps=[],
+            research_enabled=False,
+            research_category_map={},
+            research_app_category_map={},
+            privacy_filter_rules=[],
+            auth_user="alice",
+            auth_password=password,
+        ),
+    )
+
+    with pytest.raises(SystemExit) as excinfo:
+        main_module.main()
+
+    assert excinfo.value.code == 1
+    assert commands == []
+
+
+def test_jxa_strategy_enables_basic_auth(monkeypatch):
+    enabled = []
+
+    class FakeClient:
+        client_name = "aw-watcher-window"
+        client_hostname = "host.localdomain"
+        server_address = "http://localhost:5600"
+
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def create_bucket(self, *args, **kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    monkeypatch.setattr(main_module.sys, "platform", "darwin")
+    monkeypatch.setattr(main_module, "background_ensure_permissions", lambda: None)
+    monkeypatch.setattr(main_module, "setup_logging", lambda **kwargs: None)
+    monkeypatch.setattr(main_module, "ActivityWatchClient", FakeClient)
+    monkeypatch.setattr(
+        main_module,
+        "_enable_basic_auth",
+        lambda client, user, password: enabled.append((user, password)),
+    )
+    monkeypatch.setattr(main_module, "heartbeat_loop", lambda *args, **kwargs: None)
+    monkeypatch.setattr(
+        main_module,
+        "parse_args",
+        lambda: SimpleNamespace(
+            testing=True,
+            verbose=False,
+            host=None,
+            port=None,
+            poll_time=1.0,
+            strategy="jxa",
+            exclude_title=False,
+            exclude_titles=[],
+            exclude_apps=[],
+            research_enabled=False,
+            research_category_map={},
+            research_app_category_map={},
+            privacy_filter_rules=[],
+            auth_user="alice",
+            auth_password="secret",
+        ),
+    )
+
+    main_module.main()
+
+    assert enabled == [("alice", "secret")]
+
+
+def test_enable_basic_auth_adds_auth_and_keeps_other_kwargs(monkeypatch):
+    import aw_client.client as aw_client_client
+
+    captured = []
+
+    def fake_get(url, params=None, headers=None, proxies=None, **kwargs):
+        captured.append(
+            {
+                "url": url,
+                "params": params,
+                "headers": headers,
+                "proxies": proxies,
+                "kwargs": kwargs,
+            }
+        )
+
+        class Response:
+            is_redirect = False
+
+            def raise_for_status(self):
+                return None
+
+        return Response()
+
+    monkeypatch.setattr(aw_client_client.req, "get", fake_get)
+    # The helper patches all three methods; register each for teardown.
+    for name in ("post", "delete"):
+        monkeypatch.setattr(
+            aw_client_client.req, name, getattr(aw_client_client.req, name)
+        )
+    client = SimpleNamespace(
+        server_address="http://aw.example.com:5601",
+        server_api_key=None,
+    )
+
+    main_module._enable_basic_auth(client, "alice", "secret")
+    aw_client_client.req.get(
+        "http://aw.example.com:5601/api/0/info",
+        params={"limit": 1},
+        headers={"Authorization": "Bearer keep-me"},
+        proxies={"http": None},
+    )
+    aw_client_client.req.get("http://other.example/info")
+
+    assert len(captured) == 2
+    matched, other = captured
+    assert matched["params"] == {"limit": 1}
+    assert matched["headers"] == {"Authorization": "Bearer keep-me"}
+    assert matched["proxies"] == {"http": None}
+    assert matched["kwargs"]["auth"] == ("alice", "secret")
+    assert "auth" not in other["kwargs"]
+
+
+@pytest.mark.parametrize("method", ["get", "post", "delete"])
+@pytest.mark.parametrize(
+    "server_address,url,expected_auth",
+    [
+        ("http://aw.example.com:5601", "http://aw.example.com:5601/api/0/info", True),
+        ("http://aw.example.com:5601", "http://aw.example.com:56010/api/0/info", False),
+        ("http://aw.example.com:5601", "http://aw.example.com:5601@evil.example/info", False),
+        ("http://aw.example.com:5601", "https://aw.example.com:5601/api/0/info", False),
+        ("http://aw.example.com", "http://aw.example.com.evil.example/api/0/info", False),
+        ("http://aw.example.com", "http://AW.EXAMPLE.COM:80/api/0/info", True),
+        ("https://aw.example.com:443", "https://aw.example.com/api/0/info", True),
+        ("http://[::1]:5601", "http://[::1]:56010/api/0/info", False),
+        ("http://[::1]:5601", "http://[::1]:5601/api/0/info", True),
+        ("http://aw.example.com/aw/", "http://aw.example.com/aw/api/0/info", True),
+        ("http://aw.example.com/aw/", "http://aw.example.com/aw", True),
+        ("http://aw.example.com/aw/", "http://aw.example.com/aw-other/api/0/info", False),
+        ("http://aw.example.com/aw/", "http://aw.example.com/aw/../other-service/", False),
+        ("http://aw.example.com/aw/", "http://aw.example.com/aw/%2e%2e/other-service/", False),
+        ("http://aw.example.com/aw/", "http://aw.example.com/aw/..%2fother-service/", False),
+        ("http://aw.example.com/aw/", "http://aw.example.com/other-service/..%2faw/info", False),
+        ("http://aw.example.com/aw/", "http://aw.example.com/other-service/%2e%2e%2faw/info", False),
+        ("http://aw.example.com", "http://aw.example.com:bad/api/0/info", False),
+    ],
+)
+def test_enable_basic_auth_scopes_credentials_to_server(
+    monkeypatch, method, server_address, url, expected_auth
+):
+    import aw_client.client as aw_client_client
+
+    captured = []
+    for name in ("get", "post", "delete"):
+        monkeypatch.setattr(
+            aw_client_client.req,
+            name,
+            lambda url, **kwargs: captured.append(kwargs) or SimpleNamespace(is_redirect=False),
+        )
+    client = SimpleNamespace(server_address=server_address, server_api_key=None)
+
+    main_module._enable_basic_auth(client, "alice", "secret")
+    getattr(aw_client_client.req, method)(url, timeout=5)
+
+    expected = {"timeout": 5}
+    if expected_auth:
+        expected["auth"] = ("alice", "secret")
+        expected["allow_redirects"] = False
+    assert captured == [expected]
+
+
+@pytest.mark.parametrize("method", ["get", "post", "delete"])
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308])
+def test_basic_auth_refuses_redirects(monkeypatch, method, status):
+    import requests
+    import aw_client.client as aw_client_client
+
+    sent = []
+
+    class RedirectAdapter(requests.adapters.BaseAdapter):
+        def send(self, request, **kwargs):
+            sent.append(request)
+            response = requests.Response()
+            response.request = request
+            response.url = request.url
+            response.status_code = status if len(sent) == 1 else 200
+            response.headers["Location"] = "/other-service/"
+            response._content = b""
+            return response
+
+        def close(self):
+            pass
+
+    # Exercise Requests' real redirect handling without a network connection.
+    session = requests.Session()
+    session.trust_env = False
+    session.mount("http://", RedirectAdapter())
+    monkeypatch.setattr(requests.sessions, "Session", lambda: session)
+    for name in ("get", "post", "delete"):
+        monkeypatch.setattr(aw_client_client.req, name, getattr(aw_client_client.req, name))
+    client = SimpleNamespace(server_address="http://aw.example.com/aw/", server_api_key=None)
+    main_module._enable_basic_auth(client, "alice", "secret")
+
+    # An explicit True must not bypass the credential boundary either.
+    with pytest.raises(requests.exceptions.TooManyRedirects):
+        getattr(aw_client_client.req, method)(
+            "http://aw.example.com/aw/start", allow_redirects=True
+        )
+
+    assert len(sent) == 1
+    assert sent[0].headers["Authorization"] == requests.auth._basic_auth_str("alice", "secret")
+
+
+@pytest.mark.parametrize("method", ["get", "post", "delete"])
+@pytest.mark.parametrize("second_server", ["http://aw.example.com", "http://other.example"])
+def test_basic_auth_reconfiguration_replaces_old_credentials(monkeypatch, method, second_server):
+    import aw_client.client as aw_client_client
+
+    captured = []
+
+    def request(url, **kwargs):
+        captured.append((url, kwargs))
+        return SimpleNamespace(is_redirect=False)
+
+    for name in ("get", "post", "delete"):
+        monkeypatch.setattr(aw_client_client.req, name, request)
+    client = SimpleNamespace(server_address="http://aw.example.com", server_api_key=None)
+    main_module._enable_basic_auth(client, "alice", "old")
+    client.server_address = second_server
+    main_module._enable_basic_auth(client, "bob", "new")
+    getattr(aw_client_client.req, method)(second_server + "/api/0/info")
+    assert captured[-1][1]["auth"] == ("bob", "new")
+    if second_server != "http://aw.example.com":
+        getattr(aw_client_client.req, method)("http://aw.example.com/api/0/info")
+        assert "auth" not in captured[-1][1]
+
+
+def test_enable_basic_auth_rejects_api_key_conflict():
+    client = SimpleNamespace(
+        server_address="http://localhost:5600",
+        server_api_key="secret123",
+        _get=lambda *args, **kwargs: None,
+    )
+    orig_get = client._get
+
+    with pytest.raises(SystemExit) as excinfo:
+        main_module._enable_basic_auth(client, "alice", "secret")
+
+    assert excinfo.value.code == 1
+    assert client._get is orig_get
+
+
 # --- Wayland / X-auth diagnostic tests ---
 
 
