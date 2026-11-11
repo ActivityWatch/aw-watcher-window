@@ -66,3 +66,29 @@ func shouldAttemptTitleNotificationRegistration(
 func browserHeartbeatAfterContextFailure(app: String) -> BrowserFallbackHeartbeat {
   return BrowserFallbackHeartbeat(app: app, title: "", url: nil)
 }
+
+/// AXIdentifier of Zoom's meeting window. Its AX title is always "Zoom Meeting".
+let ZOOM_MEETING_WINDOW_IDENTIFIER = "zm.meeting.window.main"
+
+/// AXIdentifier of the meeting window's direct child whose AXDescription is the meeting topic.
+let ZOOM_MEETING_TOPIC_IDENTIFIER = "MeetingTopBarInfoButton"
+
+/// Only the meeting window carries a topic; Zoom's main, chat and settings windows keep their own titles.
+func isZoomMeetingWindow(identifier: String?) -> Bool {
+  return identifier == ZOOM_MEETING_WINDOW_IDENTIFIER
+}
+
+/// A usable topic replaces the window title; otherwise keep whatever title the window actually had.
+func zoomMeetingTitle(topic: String?, windowTitle: String) -> String {
+  let trimmed = topic?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+  return trimmed.isEmpty ? windowTitle : trimmed
+}
+
+/// Exclusion rules must also see the title that was replaced, so a pattern
+/// written for the original window title keeps redacting the heartbeat.
+func titlesForExclusionCheck(finalTitle: String, originalTitle: String?) -> [String] {
+  guard let originalTitle = originalTitle, originalTitle != finalTitle else {
+    return [finalTitle]
+  }
+  return [finalTitle, originalTitle]
+}
