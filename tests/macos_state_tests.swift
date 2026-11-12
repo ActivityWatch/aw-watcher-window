@@ -115,6 +115,23 @@ struct MacOSStateTests {
         == BrowserFallbackHeartbeat(app: "Safari", title: "", url: nil),
       "Safari context failure must keep app identity and drop AX title/URL"
     )
+    expect(isZoomMeetingWindow(identifier: "zm.meeting.window.main"), "the meeting window must be recognised")
+    expect(!isZoomMeetingWindow(identifier: nil), "a window without an identifier is not the meeting window")
+    expect(!isZoomMeetingWindow(identifier: "zm.main.window"), "other Zoom windows are not the meeting window")
+    expect(!isZoomMeetingWindow(identifier: ""), "an empty identifier is not the meeting window")
+
+    expect(zoomMeetingTitle(topic: "Weekly sync", windowTitle: "Zoom Meeting") == "Weekly sync", "a topic replaces the window title")
+    expect(zoomMeetingTitle(topic: "  Weekly sync\n", windowTitle: "Zoom Meeting") == "Weekly sync", "the topic is trimmed")
+    expect(zoomMeetingTitle(topic: "Réunion – 会議", windowTitle: "Zoom Meeting") == "Réunion – 会議", "non-ASCII topics are kept")
+    expect(zoomMeetingTitle(topic: nil, windowTitle: "Zoom Meeting") == "Zoom Meeting", "a missing topic keeps the window title")
+    expect(zoomMeetingTitle(topic: "", windowTitle: "Zoom Meeting") == "Zoom Meeting", "an empty topic keeps the window title")
+    expect(zoomMeetingTitle(topic: " \n\t", windowTitle: "Zoom Meeting") == "Zoom Meeting", "a whitespace-only topic keeps the window title")
+    expect(zoomMeetingTitle(topic: nil, windowTitle: "") == "", "an empty window title is kept as-is, not replaced by a constant")
+    expect(zoomMeetingTitle(topic: nil, windowTitle: "Something else") == "Something else", "fallback is the actual window title")
+
+    expect(titlesForExclusionCheck(finalTitle: "Weekly sync", originalTitle: "Zoom Meeting") == ["Weekly sync", "Zoom Meeting"], "exclusion rules see both topic and original title")
+    expect(titlesForExclusionCheck(finalTitle: "Zoom Meeting", originalTitle: "Zoom Meeting") == ["Zoom Meeting"], "an unchanged title is checked once")
+    expect(titlesForExclusionCheck(finalTitle: "Some page", originalTitle: nil) == ["Some page"], "non-Zoom heartbeats check only the final title")
     print("macOS foreground state tests passed")
   }
 }
