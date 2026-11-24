@@ -470,6 +470,11 @@ def transform_window(
         current_window = apply_privacy_filters(current_window, privacy_filter_rules)
         if current_window is None:
             return None
+        # Keep exclusions on replacement names working too: redaction must
+        # never turn an event that was excluded before into a logged event.
+        for pattern in exclude_apps or []:
+            if pattern.search(current_window.get("app", "")):
+                return None
 
     if research_category_map is not None:
         return research_transform(
