@@ -2,6 +2,8 @@
 
 import re
 
+import pytest
+
 from aw_watcher_window.main import transform_window
 from aw_watcher_window.privacy_filter import compile_privacy_rules
 
@@ -59,6 +61,27 @@ def test_exclude_apps_matches_app_before_privacy_redaction():
     # exclude_apps means "never logged"; redacting the app name first must
     # not let the vault title through.
     assert result is None
+
+
+@pytest.mark.parametrize(
+    "pattern, expected_title, keep_url",
+    [
+        ("MyBank", "REDACTED", False),
+        ("REDACTED", "excluded", False),
+        ("unrelated", "REDACTED", True),
+    ],
+)
+def test_title_exclusions_with_privacy_redaction(pattern, expected_title, keep_url):
+    rules = compile_privacy_rules(
+        [{"pattern": "MyBank", "action": "redact", "replacement": "REDACTED"}]
+    )
+    result = transform_window(
+        chrome_window(),
+        exclude_titles=[re.compile(pattern)],
+        privacy_filter_rules=rules,
+    )
+    assert result["title"] == expected_title
+    assert ("url" in result) == keep_url
 
 
 def test_exclude_apps_still_matches_privacy_replacement():

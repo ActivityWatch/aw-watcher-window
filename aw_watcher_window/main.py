@@ -465,6 +465,12 @@ def transform_window(
         if pattern.search(current_window.get("app", "")):
             return None
 
+    # Remember title matches before privacy redaction can hide them. Do not
+    # alter the title yet: drop rules must still see the original value.
+    original_title_excluded = any(
+        pattern.search(current_window["title"]) for pattern in exclude_titles or []
+    )
+
     # Privacy filter runs next — sensitive events never reach other transforms
     if privacy_filter_rules:
         current_window = apply_privacy_filters(current_window, privacy_filter_rules)
@@ -487,6 +493,13 @@ def transform_window(
         pattern.search(current_window["title"]) for pattern in exclude_titles or []
     ):
         current_window["title"] = "excluded"
+        title_excluded = True
+    else:
+        # Keep a privacy rule's replacement when only the original title
+        # matched, but still remove the URL that identifies the excluded page.
+        title_excluded = original_title_excluded
+
+    if title_excluded:
         # The URL identifies the page at least as precisely as the title, so an
         # excluded window must not report it either (matches the swift helper).
         current_window.pop("url", None)
