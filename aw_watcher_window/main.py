@@ -457,16 +457,18 @@ def transform_window(
     research_app_category_map=None,
     privacy_filter_rules=None,
 ):
-    # Privacy filter runs first — sensitive events never reach other transforms
+    # App exclusion is a privacy guarantee and must run before any other
+    # transform, including research mode — a matching app must never be logged.
+    # It also runs before the privacy filter, so a rule that redacts the app
+    # name can't hide the real app from exclude_apps.
+    for pattern in exclude_apps or []:
+        if pattern.search(current_window.get("app", "")):
+            return None
+
+    # Privacy filter runs next — sensitive events never reach other transforms
     if privacy_filter_rules:
         current_window = apply_privacy_filters(current_window, privacy_filter_rules)
         if current_window is None:
-            return None
-
-    # App exclusion is also a privacy guarantee and must run before any other
-    # transform, including research mode — a matching app must never be logged.
-    for pattern in exclude_apps or []:
-        if pattern.search(current_window.get("app", "")):
             return None
 
     if research_category_map is not None:
@@ -476,11 +478,12 @@ def transform_window(
             app_category_map=research_app_category_map,
         )
 
-    for pattern in exclude_titles or []:
-        if pattern.search(current_window["title"]):
-            current_window["title"] = "excluded"
-
-    if exclude_title:
+    if exclude_title or any(
+        pattern.search(current_window["title"]) for pattern in exclude_titles or []
+    ):
         current_window["title"] = "excluded"
+        # The URL identifies the page at least as precisely as the title, so an
+        # excluded window must not report it either (matches the swift helper).
+        current_window.pop("url", None)
 
     return current_window
