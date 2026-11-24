@@ -101,3 +101,14 @@ def test_exclude_apps_still_matches_privacy_replacement():
         privacy_filter_rules=rules,
     )
     assert result is None
+
+
+def test_title_exclusion_does_not_preempt_privacy_drop_without_title():
+    rules = compile_privacy_rules(
+        [{"pattern": "Chrome", "field": "app", "action": "drop"}]
+    )
+    assert transform_window(
+        {"app": "Google Chrome"},
+        exclude_titles=[re.compile("MyBank")],
+        privacy_filter_rules=rules,
+    ) is None
