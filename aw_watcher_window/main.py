@@ -1,12 +1,14 @@
 import logging
 import multiprocessing
 import os
+import posixpath
 import re
 import signal
 import subprocess
 import sys
 from datetime import datetime, timezone
 from time import sleep
+from urllib.parse import unquote, urlsplit
 
 from aw_client import ActivityWatchClient
 from aw_core.log import setup_logging
@@ -147,6 +149,96 @@ def try_compile_regex(pattern):
         raise SystemExit(1)
 
 
+def _auth_configured(args) -> bool:
+    return bool(getattr(args, "auth_user", None)) and (
+        getattr(args, "auth_password", None) is not None
+    )
+
+
+def _enable_basic_auth(client, user, password):
+    """Inject HTTP Basic Auth without replacing aw-client HTTP methods.
+
+    ActivityWatch/aw-watcher-window#127 replaced ``_get``/``_post``/``_delete``.
+    That matches locked aw-client 0.5.14, but current aw-client master passes
+    API-key headers and a loopback proxy bypass through those methods. Patch
+    the client module's ``requests`` calls so whichever kwargs the installed
+    client already sends are preserved. Basic auth and the server API key both
+    use Authorization, so refuse both.
+    """
+    if getattr(client, "server_api_key", None):
+        logger.error(
+            "HTTP Basic Auth and the ActivityWatch server API key both set "
+            "the Authorization header. Unset one of them."
+        )
+        raise SystemExit(1)
+
+    import aw_client.client as aw_client_client
+
+    auth = (user, password)
+    server = urlsplit(client.server_address)
+    default_ports = {"http": 80, "https": 443}
+    server_origin = (
+        server.scheme,
+        server.hostname,
+        server.port if server.port is not None else default_ports.get(server.scheme),
+    )
+    server_path = posixpath.normpath(unquote(server.path or "/")).rstrip("/")
+
+    def _matches_server(url):
+        try:
+            # Check the URL Requests will send, not a raw path containing '..'.
+            prepared = aw_client_client.req.PreparedRequest()
+            prepared.prepare_url(url, None)
+            target = urlsplit(prepared.url)
+            target_origin = (
+                target.scheme,
+                target.hostname,
+                target.port
+                if target.port is not None
+                else default_ports.get(target.scheme),
+            )
+        except (ValueError, aw_client_client.req.exceptions.RequestException):
+            return False
+        # Proxies may decode escaped separators/dots before routing, so check
+        # the decoded normalized path as well as Requests' URL normalization.
+        target_path = posixpath.normpath(unquote(target.path))
+        return target_origin == server_origin and all(
+            path == server_path or path.startswith(server_path + "/")
+            for path in (target.path, target_path)
+        )
+
+    def _wrap(orig):
+        # Replace our previous wrapper rather than retaining stale credentials
+        # or stacking wrappers that could authenticate the previous server.
+        orig = getattr(orig, "_aw_basic_auth_original", orig)
+
+        def wrapped(url, *args, **kwargs):
+            if not _matches_server(url):
+                return orig(url, *args, **kwargs)
+            kwargs.setdefault("auth", auth)
+            # Requests retains Authorization on same-origin redirects, even
+            # outside server_path. Refuse redirects instead of forwarding
+            # credentials (or silently treating a redirected write as success).
+            kwargs["allow_redirects"] = False
+            response = orig(url, *args, **kwargs)
+            if response.is_redirect:
+                raise aw_client_client.req.exceptions.TooManyRedirects(
+                    "HTTP Basic Auth refuses redirects; configure the final server address",
+                    response=response,
+                )
+            return response
+
+        wrapped._aw_basic_auth_original = orig
+        return wrapped
+
+    for name in ("get", "post", "delete"):
+        setattr(
+            aw_client_client.req,
+            name,
+            _wrap(getattr(aw_client_client.req, name)),
+        )
+
+
 def main():
     # Must run before parse_args(): in a frozen build multiprocessing re-executes
     # this binary for helper processes and their argv would be rejected below.
@@ -184,6 +276,18 @@ def main():
     client = ActivityWatchClient(
         "aw-watcher-window", host=args.host, port=args.port, testing=args.testing
     )
+
+    if _auth_configured(args):
+        if sys.platform == "darwin" and args.strategy == "swift":
+            logger.error(
+                "HTTP Basic Auth is configured, but the macOS swift strategy "
+                "sends heartbeats from a separate binary and cannot attach "
+                "those credentials. Refusing to start so requests are not "
+                "silently unauthenticated. Use --strategy jxa or --strategy applescript."
+            )
+            sys.exit(1)
+        _enable_basic_auth(client, args.auth_user, args.auth_password)
+        logger.info("HTTP Basic Auth enabled for user: %s", args.auth_user)
 
     bucket_id = f"{client.client_name}_{client.client_hostname}"
     event_type = "currentwindow"
