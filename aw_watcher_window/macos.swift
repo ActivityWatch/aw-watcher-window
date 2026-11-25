@@ -711,6 +711,44 @@ class MainThing {
     return nil
   }
 
+  // Zoom's bundle identifier; its meeting window is always titled "Zoom
+  // Meeting". (localizedName is "Zoom" although the bundle is named zoom.us,
+  // so the identifier is the stable way to recognise it.)
+  let ZOOM_BUNDLE_IDS = ["us.zoom.xos"]
+
+  // Return the meeting topic shown in this Zoom window, or nil. Only direct
+  // children are read (the full tree is too slow), searched from the end
+  // because participant tiles come first. Don't log the topic here: it hasn't
+  // been through the title exclusion rules yet.
+  func zoomMeetingTopic(window: AXUIElement) -> String? {
+    var identifierRef: AnyObject?
+    AXUIElementCopyAttributeValue(window, kAXIdentifierAttribute as CFString, &identifierRef)
+    guard isZoomMeetingWindow(identifier: axString(identifierRef)) else { return nil }
+
+    let started = Date()
+    var childrenRef: AnyObject?
+    AXUIElementCopyAttributeValue(window, kAXChildrenAttribute as CFString, &childrenRef)
+    let children = (childrenRef as? [AXUIElement]) ?? []
+
+    var examined = 0
+    var topic: String? = nil
+    for child in children.reversed() {
+      examined += 1
+      var childIdentifierRef: AnyObject?
+      AXUIElementCopyAttributeValue(child, kAXIdentifierAttribute as CFString, &childIdentifierRef)
+      if axString(childIdentifierRef) == ZOOM_MEETING_TOPIC_IDENTIFIER {
+        var descriptionRef: AnyObject?
+        AXUIElementCopyAttributeValue(child, kAXDescriptionAttribute as CFString, &descriptionRef)
+        topic = axString(descriptionRef)
+        break
+      }
+    }
+
+    let elapsedMs = Int(Date().timeIntervalSince(started) * 1000)
+    debug("Zoom meeting window: examined \(examined) of \(children.count) children in \(elapsedMs) ms, topic found: \(topic != nil)")
+    return topic
+  }
+
   func elementPID(_ element: AXUIElement) -> pid_t? {
     var pid: pid_t = 0
     return AXUIElementGetPid(element, &pid) == .success ? pid : nil
@@ -961,6 +999,9 @@ class MainThing {
     }
 
     var data = NetworkMessage(app: applicationName, title: axString(windowTitle) ?? "")
+    // Set only when a branch below may have replaced the AX title, so title
+    // exclusion rules can still be matched against the original.
+    var originalTitle: String? = nil
 
     if CHROME_BROWSERS.contains(applicationName) {
       debug("Chrome browser detected, extracting URL and title")
@@ -1034,11 +1075,18 @@ class MainThing {
         let axApp = AXUIElementCreateApplication(application.processIdentifier)
         AXUIElementSetAttributeValue(axApp, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
       }
+    } else if ZOOM_BUNDLE_IDS.contains(application.bundleIdentifier ?? ""), !researchEnabled, !excludeTitle, let window = window {
+      // Zoom titles every meeting window "Zoom Meeting"; record the meeting's
+      // topic instead when the focused window exposes one. Skipped when the
+      // title is going to be discarded anyway (research mode, exclude-title).
+      let windowTitle = data.title ?? ""
+      originalTitle = windowTitle
+      data.title = zoomMeetingTitle(topic: zoomMeetingTopic(window: window), windowTitle: windowTitle)
     }
 
     if researchEnabled {
       data = applyResearchFilter(data)
-    } else if excludeTitle || titleShouldBeExcluded(data.title ?? "") {
+    } else if excludeTitle || titlesForExclusionCheck(finalTitle: data.title ?? "", originalTitle: originalTitle).contains(where: titleShouldBeExcluded) {
       data.title = "excluded"
       // the URL identifies the page at least as precisely as the title does,
       // so an excluded window must not report it either
