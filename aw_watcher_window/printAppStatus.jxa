@@ -49,6 +49,41 @@ function axWindowTitle(proc) {
   }
 }
 
+// WhatsApp exposes the selected chat as a heading rather than its window title.
+// This still traverses the whole AX tree; native polling-cost verification is
+// required before shipping it. Return undefined to reuse the normal fallback.
+function whatsAppChatTitle(proc) {
+  try {
+    var mainWindow = proc.windows().find(function(w) {
+      try {
+        return w.attributes.byName("AXMain").value() === true;
+      } catch (e) {
+        return false;
+      }
+    });
+    if (mainWindow) {
+      var elements = mainWindow.entireContents();
+      for (var i = 0; i < elements.length; i++) {
+        try {
+          var attributes = elements[i].attributes;
+          if (attributes.byName("AXRole").value() === "AXHeading" &&
+              attributes.byName("AXIdentifier").value() === "NavigationBar_HeaderViewButton") {
+            var chatName = attributes.byName("AXDescription").value();
+            if (typeof chatName === "string" && chatName.length > 0) {
+              return chatName;
+            }
+          }
+        } catch (e) {
+          // A disappearing or inaccessible element must not abort this poll.
+        }
+      }
+    }
+  } catch (e) {
+    // The AX tree may be unavailable while WhatsApp changes windows.
+  }
+  return undefined;
+}
+
 // it's not possible to get the URL from firefox
 // https://stackoverflow.com/questions/17846948/does-firefox-offer-applescript-support-to-get-url-of-windows
 
@@ -94,7 +129,12 @@ switch(appName) {
     }
     break;
   default:
-    title = axWindowTitle(oProcess);
+    if (appName.indexOf("WhatsApp") !== -1) {
+      title = whatsAppChatTitle(oProcess);
+    }
+    if (title === undefined) {
+      title = axWindowTitle(oProcess);
+    }
 }
 
 // The Python side requires a title key (it indexes current_window["title"]),
