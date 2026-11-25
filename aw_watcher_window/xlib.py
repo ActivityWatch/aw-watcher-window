@@ -122,7 +122,6 @@ def get_window_class(window: Window) -> str:
     # TODO: Is this needed?
     # nikanar: Indeed, it seems that it is. But it would be interesting to see how often this succeeds, and if it is low, maybe fail earlier.
     if not cls:
-        print("")
         logger.warning("Code made an unclear branch")
         try:
             window = window.query_tree().parent
